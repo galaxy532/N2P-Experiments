@@ -1,0 +1,21 @@
+# Core
+torch>=2.1
+transformer_lens>=2.0      # HookedTransformer; supports gpt-j-6b and meta-llama Llama-3
+transformers>=4.41
+accelerate>=0.30
+datasets>=2.19
+huggingface_hub>=0.23
+
+# Numerics / fitting
+numpy>=1.24
+scipy>=1.10
+scikit-learn>=1.3          # PCA, linear regression for helix fit
+einops>=0.7
+
+# Plotting / reporting
+matplotlib>=3.7
+pandas>=2.0
+tqdm>=4.66
+
+# SAEs (weeks 2-3; pinned here so the env is stable across the sprint)
+# sae_lens>=3.0            # uncomment when starting feature-tracking week

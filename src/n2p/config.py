@@ -1,0 +1,75 @@
+"""Central config: model registry, paths, device. Scripts reference models by KEY."""
+from __future__ import annotations
+
+import os
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+
+import torch
+
+# --- Paths ---------------------------------------------------------------------
+REPO_ROOT = Path(__file__).resolve().parents[2]
+RESULTS_DIR = REPO_ROOT / "results"
+LOGS_DIR = REPO_ROOT / "logs"
+STORAGE_ROOT = Path(os.environ.get("STORAGE_ROOT", "/storage"))
+HF_HOME = Path(os.environ.get("HF_HOME", STORAGE_ROOT / "hf_cache"))
+
+# --- Device --------------------------------------------------------------------
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+DTYPE = torch.float16 if DEVICE == "cuda" else torch.float32
+
+
+@dataclass(frozen=True)
+class ModelSpec:
+    key: str
+    hf_id: str
+    tl_name: str          # TransformerLens HookedTransformer name
+    n_layers: int
+    d_model: int
+    gated: bool = False
+    # Layer band where the addition "helix" is built, per the arithmetic prior art.
+    # GPT-J numbers from [kantamneni2025]; Llama band is a TODO to confirm empirically.
+    build_layers: tuple[int, int] = (0, 0)
+
+
+MODELS: dict[str, ModelSpec] = {
+    # [kantamneni2025]: MLPs ~14-18 build helix(a+b) on GPT-J (28 layers).
+    "gptj": ModelSpec("gptj", "EleutherAI/gpt-j-6B", "gpt-j-6b",
+                      n_layers=28, d_model=4096, build_layers=(14, 18)),
+    # Llama-3-8B: 32 layers, d_model 4096. [kantamneni2025] validated the helix on
+    # Llama-3.1-8B but reports the build/read split on GPT-J. PRIOR for Llama: scale
+    # GPT-J's mid-network build fraction (14-18 of 28 ≈ 0.50-0.64 depth) to 32 layers
+    # -> ~16-21. CONFIRM empirically with run_helix_fit before trusting it.
+    # CAVEAT: Llama's gated (SwiGLU) MLP makes the helix LESS cleanly causal than GPT-J
+    # ([kantamneni2025] App. D) — lead on GPT-J; expect noisier causal validation here.
+    "llama3-8b": ModelSpec("llama3-8b", "meta-llama/Meta-Llama-3-8B",
+                           "meta-llama/Meta-Llama-3-8B",
+                           n_layers=32, d_model=4096, gated=True, build_layers=(16, 21)),
+}
+
+
+def get_model_spec(key: str) -> ModelSpec:
+    if key not in MODELS:
+        raise KeyError(f"Unknown model key {key!r}. Known: {list(MODELS)}")
+    return MODELS[key]
+
+
+def git_short_sha() -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=REPO_ROOT
+        ).decode().strip()
+    except Exception:
+        return "nogit"
+
+
+def run_id(seed: int) -> str:
+    from datetime import date
+    return f"{date.today().isoformat()}-{git_short_sha()}-s{seed}"
+
+
+def run_dir(experiment: str, seed: int) -> Path:
+    d = RESULTS_DIR / experiment / run_id(seed)
+    d.mkdir(parents=True, exist_ok=True)
+    return d

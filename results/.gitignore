@@ -1,0 +1,6 @@
+# Ignore heavy run outputs; keep manifests/plots that are explicitly committed.
+*
+!.gitignore
+!**/manifest.json
+!**/*.png
+!**/summary.json
