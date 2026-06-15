@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# One-time setup for Paperspace Gradient (A6000). Wires the Hugging Face cache to the
-# PERSISTENT /storage volume and installs dependencies. Safe to re-run.
+# One-time setup for Paperspace Gradient (A6000). Wires the Hugging Face cache to a
+# sibling dir beside the repo (../hf_cache) and installs dependencies. Safe to re-run.
 set -euo pipefail
 
-# --- Persistent cache (survives machine restarts; the default cache does NOT) ---
-export STORAGE_ROOT="${STORAGE_ROOT:-/storage}"
-export HF_HOME="${STORAGE_ROOT}/hf_cache"
+# --- HF cache ALONGSIDE the repo (sibling dir), never inside this git repo.
+#     Simple, easy to find/delete. Override with HF_HOME. ---
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PARENT_DIR="$(dirname "${REPO_ROOT}")"
+export HF_HOME="${HF_HOME:-${PARENT_DIR}/hf_cache}"
 export HF_HUB_ENABLE_HF_TRANSFER=1          # faster downloads
 mkdir -p "${HF_HOME}"
 
@@ -14,8 +16,7 @@ PROFILE="${HOME}/.bashrc"
 grep -q 'N2P HF cache' "${PROFILE}" 2>/dev/null || cat >> "${PROFILE}" <<EOF
 
 # --- N2P HF cache (added by setup_paperspace.sh) ---
-export STORAGE_ROOT=${STORAGE_ROOT}
-export HF_HOME=${STORAGE_ROOT}/hf_cache
+export HF_HOME=${HF_HOME}
 export HF_HUB_ENABLE_HF_TRANSFER=1
 EOF
 

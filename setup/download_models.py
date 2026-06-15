@@ -1,7 +1,7 @@
-"""Pre-cache the N2P models into the persistent /storage HF cache.
+"""Pre-cache the N2P models into the repo-root HF cache (<repo>/hf_cache).
 
-Run once per Paperspace machine (after setup_paperspace.sh). Models persist in
-/storage across restarts, so subsequent sessions skip the multi-GB download.
+Cache location is the repo root so it's easy to find and delete; override by
+exporting HF_HOME. config.py defaults to the same path, so the loader reuses it.
 
     export HF_TOKEN=...          # required for gated Llama-3-8B; not needed for GPT-J
     python setup/download_models.py
@@ -9,6 +9,14 @@ Run once per Paperspace machine (after setup_paperspace.sh). Models persist in
 """
 import argparse
 import os
+from pathlib import Path
+
+# Cache lives ALONGSIDE the repo (<repo>/../hf_cache), NOT inside it — this is a git
+# repo and the multi-GB models must not land in the working tree. Easy to find/delete.
+# Override by exporting HF_HOME. Must be set BEFORE importing huggingface_hub, which
+# freezes its cache path at import time.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+os.environ.setdefault("HF_HOME", str(REPO_ROOT.parent / "hf_cache"))
 
 from huggingface_hub import snapshot_download
 
@@ -26,11 +34,8 @@ def main():
                     help="cache only this registry key (default: all)")
     args = ap.parse_args()
 
-    hf_home = os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface"))
-    print(f"[download] HF_HOME={hf_home}")
-    if "/storage" not in hf_home:
-        print("[download] WARNING: HF_HOME is not under /storage — cache may NOT persist "
-              "across Paperspace restarts. Run setup/setup_paperspace.sh first.")
+    hf_home = os.environ["HF_HOME"]
+    print(f"[download] HF_HOME={hf_home}  (models land in {hf_home}/hub)")
 
     keys = [args.only] if args.only else list(MODELS)
     for k in keys:

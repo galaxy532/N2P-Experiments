@@ -74,8 +74,8 @@ N2P-Experiments/
 ├── README.md                 ← you are here (protocol source of truth)
 ├── requirements.txt
 ├── setup/
-│   ├── setup_paperspace.sh    # one-time env + persistent /storage HF cache wiring
-│   └── download_models.py     # pre-cache GPT-J + Llama-3-8B to /storage
+│   ├── setup_paperspace.sh    # one-time env + HF cache wiring (../hf_cache, beside repo)
+│   └── download_models.py     # pre-cache GPT-J + Llama-3-8B to ../hf_cache
 ├── src/n2p/
 │   ├── config.py              # paths, model registry, device, cache location
 │   ├── models.py              # load models via TransformerLens (HookedTransformer)
@@ -121,8 +121,8 @@ No local GPU — this repo is pulled on Paperspace and run there.
 ```bash
 # one-time, in a fresh Paperspace notebook/terminal:
 git clone <your-fork-url> N2P-Experiments && cd N2P-Experiments
-bash setup/setup_paperspace.sh          # wires HF cache to persistent /storage, installs deps
-python setup/download_models.py          # caches GPT-J + Llama-3-8B to /storage (persists!)
+bash setup/setup_paperspace.sh          # wires HF cache to ../hf_cache (beside repo), installs deps
+python setup/download_models.py          # caches GPT-J + Llama-3-8B to ../hf_cache
 
 # week 1:
 python experiments/week1_number_representation/run_helix_fit.py --model gptj
@@ -137,12 +137,14 @@ Fine-tune only as a fallback, and if you do, verify the representation exists fr
 too (so fine-tuning *cleaned* rather than *created* it). See the feature-tracking wiki
 note, "Model preparation."
 
-**Why cache to `/storage`:** on Paperspace Gradient, `/storage` is **persistent across
-machine restarts** while the home/notebook dir and the default HF cache are **not**.
-GPT-J (~12 GB fp16) and Llama-3-8B (~16 GB fp16) are expensive to re-download every
-session; caching them to `/storage/hf_cache` once saves that every time.
-`setup_paperspace.sh` sets `HF_HOME=/storage/hf_cache` so all of HF/TransformerLens
-reuse it.
+**Where the cache lives:** `HF_HOME=../hf_cache` — a sibling of the repo, **never
+inside it** (this is a git repo; multi-GB models must not enter the working tree).
+Set by both `setup_paperspace.sh` and `download_models.py`, with `config.py`
+defaulting to the same path so the loader reuses it. Models land in
+`../hf_cache/hub/`. On Paperspace the repo lives at `/notebooks/N2P-Experiments`, so
+the cache is `/notebooks/hf_cache` (persistent with the `/notebooks` volume). Export
+`HF_HOME` to override. GPT-J (~12 GB fp16) and Llama-3-8B (~16 GB fp16) are expensive
+to re-download, so cache once.
 
 **Llama-3-8B is gated.** Accept the license on its Hugging Face page and export a token
 (`export HF_TOKEN=...`) before `download_models.py`. GPT-J is open, no token needed.

@@ -12,8 +12,11 @@ import torch
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_DIR = REPO_ROOT / "results"
 LOGS_DIR = REPO_ROOT / "logs"
-STORAGE_ROOT = Path(os.environ.get("STORAGE_ROOT", "/storage"))
-HF_HOME = Path(os.environ.get("HF_HOME", STORAGE_ROOT / "hf_cache"))
+# HF cache lives ALONGSIDE the repo (sibling dir), never inside this git repo.
+# Override with HF_HOME. Export it back so TransformerLens/huggingface (imported
+# later) read the same location.
+HF_HOME = Path(os.environ.get("HF_HOME", REPO_ROOT.parent / "hf_cache"))
+os.environ.setdefault("HF_HOME", str(HF_HOME))
 
 # --- Device --------------------------------------------------------------------
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
