@@ -23,12 +23,12 @@ EOF
 echo "[setup] HF_HOME=${HF_HOME}"
 
 # --- Dependencies ---
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python -m pip install hf_transfer || true
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt
+python3 -m pip install hf_transfer || true
 
 # --- Results/logs dirs ---
 mkdir -p results logs
 [ -f logs/runlog.md ] || echo "# N2P run log (append one line per run)" > logs/runlog.md
 
-echo "[setup] done. Next: export HF_TOKEN=... (for gated Llama-3), then: python setup/download_models.py"
+echo "[setup] done. Next: export HF_TOKEN=... (for gated Llama-3), then: python3 setup/download_models.py"

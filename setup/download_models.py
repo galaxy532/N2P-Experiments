@@ -4,8 +4,8 @@ Cache location is the repo root so it's easy to find and delete; override by
 exporting HF_HOME. config.py defaults to the same path, so the loader reuses it.
 
     export HF_TOKEN=...          # required for gated Llama-3-8B; not needed for GPT-J
-    python setup/download_models.py
-    python setup/download_models.py --only gptj      # just one
+    python3 setup/download_models.py
+    python3 setup/download_models.py --only gptj      # just one
 """
 import argparse
 import os
