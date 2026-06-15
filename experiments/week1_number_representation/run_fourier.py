@@ -18,7 +18,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from n2p import config, models                       # noqa: E402
 from n2p.number_repr import fourier                    # noqa: E402
-from n2p.number_repr.causal import cache_number_site   # noqa: E402
+from n2p.number_repr.causal import cache_number_site_all_layers  # noqa: E402
 
 
 def main():
@@ -34,7 +34,17 @@ def main():
     model = models.load_model(args.model)
     tok_map = models.number_token_ids(model, args.lo, args.hi)
     values = np.array(sorted(tok_map))
-    values = values[(np.diff(np.append(values, values[-1] + 1)) == 1)]
+    # Keep the contiguous prefix from the first value; stop at the first gap. The DFT
+    # assumes an evenly sampled integer grid, so a holey set silently corrupts the
+    # spectrum. Warn so dropped numbers are visible.
+    if values.size:
+        gaps = np.where(np.diff(values) != 1)[0]
+        if gaps.size:
+            cut = int(gaps[0]) + 1
+            print(f"[warn] gap after {values[cut-1]} (next single-token value is "
+                  f"{values[cut]}); dropping {len(values) - cut} value(s), using "
+                  f"contiguous {values[0]}..{values[cut-1]} ({cut} numbers)")
+            values = values[:cut]
 
     if args.layer is None:
         # Embedding matrix rows for the number tokens.
@@ -43,7 +53,8 @@ def main():
         site = "embedding"
     else:
         prompts = [f" {n}" for n in values]
-        acts = cache_number_site(model, prompts, f"blocks.{args.layer}.hook_resid_post")
+        hook = f"blocks.{args.layer}.hook_resid_post"
+        acts = cache_number_site_all_layers(model, prompts, [hook])[hook]  # batched fwd
         site = f"resid_post.L{args.layer}"
 
     spec = fourier.number_dft(acts, values)

@@ -33,6 +33,41 @@ def cache_number_site(model, prompts, hook_name, token_index=-1):
 
 
 @torch.no_grad()
+def cache_number_site_all_layers(model, prompts, hook_names, token_index=-1,
+                                 batch_size=256):
+    """Cache MANY sites in one forward sweep per batch, instead of one pass per site.
+
+    A single forward already computes every layer's residual, so caching N sites costs
+    the same forward as caching one. This replaces `len(hook_names)` separate
+    `cache_number_site` calls (which each re-run the whole model) with one batched
+    sweep — e.g. for a per-layer helix scan, ~n_layers x fewer forward passes.
+
+    Args:
+        hook_names:  iterable of hook strings (e.g. every blocks.L.hook_resid_post).
+        token_index: position to read (-1 = last token = the number token here).
+        batch_size:  prompts per forward. Prompts here are equal length (single
+                     number tokens), so they batch without padding; lower this only
+                     if a longer-prompt variant runs out of memory.
+
+    Returns: dict {hook_name -> (len(prompts), d_model) float32 numpy}, matching what
+    `cache_number_site` returns per hook.
+    """
+    names = list(hook_names)
+    nameset = set(names)
+    if not prompts:
+        d = model.cfg.d_model
+        return {h: np.empty((0, d), dtype=np.float32) for h in names}
+
+    chunks = {h: [] for h in names}
+    for i in range(0, len(prompts), batch_size):
+        toks = model.to_tokens(prompts[i:i + batch_size])  # (b, seq); equal len -> no pad
+        _, cache = model.run_with_cache(toks, names_filter=lambda n: n in nameset)
+        for h in names:
+            chunks[h].append(cache[h][:, token_index].float().cpu().numpy())
+    return {h: np.concatenate(v, axis=0) for h, v in chunks.items()}
+
+
+@torch.no_grad()
 def subspace_patch_logit_diff(
     model,
     clean_prompt: str,

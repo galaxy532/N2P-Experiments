@@ -17,7 +17,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from n2p import config, models                      # noqa: E402
 from n2p.number_repr import helix                    # noqa: E402
-from n2p.number_repr.causal import cache_number_site  # noqa: E402
+from n2p.number_repr.causal import cache_number_site_all_layers  # noqa: E402
 
 
 def main():
@@ -35,14 +35,27 @@ def main():
     # Single-token integers only, contiguous.
     tok_map = models.number_token_ids(model, args.lo, args.hi)
     values = np.array(sorted(tok_map))
-    values = values[(np.diff(np.append(values, values[-1] + 1)) == 1)]  # keep contiguous head
+    # Keep the contiguous prefix from the first value; stop at the first gap so the
+    # value grid is evenly sampled (helix fit + later DFT assume contiguity). Warn so
+    # dropped numbers are visible rather than silently producing a holey set.
+    if values.size:
+        gaps = np.where(np.diff(values) != 1)[0]
+        if gaps.size:
+            cut = int(gaps[0]) + 1
+            print(f"[warn] gap after {values[cut-1]} (next single-token value is "
+                  f"{values[cut]}); dropping {len(values) - cut} value(s), using "
+                  f"contiguous {values[0]}..{values[cut-1]} ({cut} numbers)")
+            values = values[:cut]
     prompts = [f" {n}" for n in values]              # bare number; space-prefixed token
 
     out = config.run_dir("week1_number_representation", args.seed)
+    # One batched forward sweep caches resid_post at every layer at once (vs. a full
+    # forward per layer). Read each layer's activations out of the returned dict.
+    hooks = [f"blocks.{layer}.hook_resid_post" for layer in range(spec.n_layers)]
+    acts_by_hook = cache_number_site_all_layers(model, prompts, hooks, token_index=-1)
     per_layer = []
     for layer in range(spec.n_layers):
-        hook = f"blocks.{layer}.hook_resid_post"
-        acts = cache_number_site(model, prompts, hook, token_index=-1)  # (N, d)
+        acts = acts_by_hook[f"blocks.{layer}.hook_resid_post"]  # (N, d)
         fit = helix.fit_helix(acts, values, n_pca=args.n_pca)
         base = helix.baseline_pca_r2(acts, values, n_pca=args.n_pca)
         per_layer.append({"layer": layer, "helix_r2": fit["r2"],
