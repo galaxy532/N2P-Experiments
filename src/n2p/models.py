@@ -12,18 +12,18 @@ from .config import DEVICE, DTYPE, get_model_spec
 def load_model(key: str):
     """Return a HookedTransformer for the registry key. Cached within a process.
 
-    For the 8B model we use from_pretrained_no_processing to keep memory down and
-    avoid weight-folding surprises during activation patching; for GPT-J the
-    processed load is fine and gives the usual centered/folded conveniences.
+    All models load via from_pretrained_no_processing. Under reduced precision (fp16)
+    the processed path folds/centers weights with an fp32 upcast that transiently
+    spikes CPU RAM (OOM-killed GPT-J even at 44 GB) and is numerically discouraged by
+    TransformerLens. We don't need the centered/folded conveniences: the helix fit
+    mean-centers activations itself, and no_processing is also the patching-friendly
+    load (no weight-folding surprises during activation patching).
     """
     from transformer_lens import HookedTransformer
 
     spec = get_model_spec(key)
     common = dict(device=DEVICE, dtype=DTYPE)
-    if spec.n_layers >= 32:  # 8B-scale: minimize preprocessing/memory
-        model = HookedTransformer.from_pretrained_no_processing(spec.tl_name, **common)
-    else:
-        model = HookedTransformer.from_pretrained(spec.tl_name, **common)
+    model = HookedTransformer.from_pretrained_no_processing(spec.tl_name, **common)
     model.eval()
     torch.set_grad_enabled(False)
     return model
