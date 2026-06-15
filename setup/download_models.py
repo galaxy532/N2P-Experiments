@@ -46,8 +46,13 @@ def main():
             print("[download] SKIP llama3-8b: set HF_TOKEN and accept the license at "
                   "https://huggingface.co/meta-llama/Meta-Llama-3-8B")
             continue
-        snapshot_download(repo_id=repo, token=token,
-                          ignore_patterns=["*.pth", "original/*"])  # keep safetensors only
+        # Keep only PyTorch/safetensors weights. GPT-J's repo also ships full fp32
+        # copies in Flax (*.msgpack) and TensorFlow (*.h5) — ~24 GB each, useless to
+        # TransformerLens/HF — so drop them and the meta/original/.pth duplicates.
+        snapshot_download(
+            repo_id=repo, token=token,
+            ignore_patterns=["*.pth", "*.msgpack", "*.h5", "*.ot", "original/*"],
+        )
         print(f"[download] {k} cached.")
 
     print("[download] done.")
