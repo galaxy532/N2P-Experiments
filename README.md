@@ -122,13 +122,13 @@ No local GPU — this repo is pulled on Paperspace and run there.
 # one-time, in a fresh Paperspace notebook/terminal:
 git clone <your-fork-url> N2P-Experiments && cd N2P-Experiments
 bash setup/setup_paperspace.sh          # wires HF cache to ../hf_cache (beside repo), installs deps
-python setup/download_models.py          # caches GPT-J + Llama-3-8B to ../hf_cache
+python3 setup/download_models.py          # caches GPT-J + Llama-3-8B to ../hf_cache
 
 # week 1:
-python experiments/week1_number_representation/run_helix_fit.py --model gptj
-python experiments/week1_number_representation/run_fourier.py --model gptj
-python experiments/week1_number_representation/run_causal_validation.py --model gptj
-python experiments/week1_circuit_sanity/run_discovery_sanity.py --target tracr  # needs Edge-Pruning repo
+python3 experiments/week1_number_representation/run_helix_fit.py --model gptj
+python3 experiments/week1_number_representation/run_fourier.py --model gptj
+python3 experiments/week1_number_representation/run_causal_validation.py --model gptj
+python3 experiments/week1_circuit_sanity/run_discovery_sanity.py --target tracr  # needs Edge-Pruning repo
 ```
 
 **Model preparation:** use the **frozen** model + few-shot prompting; the number
