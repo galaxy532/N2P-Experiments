@@ -1,5 +1,6 @@
 # Core
-torch>=2.1
+torch --index-url https://download.pytorch.org/whl/cu121
+torchvision --index-url https://download.pytorch.org/whl/cu121
 transformer_lens>=2.0      # HookedTransformer; supports gpt-j-6b and meta-llama Llama-3
 transformers>=4.41
 accelerate>=0.30
