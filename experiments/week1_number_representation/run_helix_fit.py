@@ -7,6 +7,7 @@ is the build region (expected ~14-18 on GPT-J).
 
     export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
     python3 experiments/week1_number_representation/run_helix_fit.py --model gptj
+    python3 experiments/week1_number_representation/run_helix_fit.py --model gptj --context addition
 """
 import argparse
 import json
