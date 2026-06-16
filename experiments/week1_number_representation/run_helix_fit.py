@@ -21,12 +21,34 @@ from n2p.number_repr import helix                    # noqa: E402
 from n2p.number_repr.causal import cache_number_site_all_layers  # noqa: E402
 
 
+def _operand_a_index(model, prompt):
+    """Index of the operand-a token in an '{a}+{b}=' prompt (after BOS). Assumes a is a
+    single token; returns the first position whose token contains a digit. Mirrors
+    run_causal_validation.operand_a_index so both scripts read the same site."""
+    for i, t in enumerate(model.to_str_tokens(prompt)):
+        if any(c.isdigit() for c in t):
+            return i
+    raise ValueError(f"could not locate operand a in {model.to_str_tokens(prompt)}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="gptj")
     ap.add_argument("--lo", type=int, default=0)
-    ap.add_argument("--hi", type=int, default=360)   # contiguous range eases later DFT
+    ap.add_argument("--hi", type=int, default=99)    # [0,99]: matches kantamneni2025's
+    # helix-fit range and stays below the 3-digit subspace discontinuity at a=100
+    # (PC1 jump, App. B). Use --hi 360 for the wider sweep / DFT structure analysis.
     ap.add_argument("--n_pca", type=int, default=9)
+    ap.add_argument("--context", choices=["bare", "addition"], default="bare",
+                    help="bare: analyze the isolated number token ' {a}' (context-free; "
+                         "original default, kept for reproducibility). addition: analyze "
+                         "the operand-a token inside an '{a}+{b}=' prompt, as "
+                         "[kantamneni2025] §4.3 does — the regime where the model actually "
+                         "deploys the helix.")
+    ap.add_argument("--b_fixed", type=int, default=5,
+                    help="fixed second operand b for '{a}+{b}=' prompts when --context "
+                         "addition (single-token b keeps prompts equal-length so they "
+                         "batch without padding and the operand-a index is constant).")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
@@ -47,13 +69,23 @@ def main():
                   f"{values[cut]}); dropping {len(values) - cut} value(s), using "
                   f"contiguous {values[0]}..{values[cut-1]} ({cut} numbers)")
             values = values[:cut]
-    prompts = [f" {n}" for n in values]              # bare number; space-prefixed token
+    if args.context == "addition":
+        # [kantamneni2025] §4.3: fit helix(a) on the residual stream ON TOP OF THE a
+        # TOKEN within an addition prompt (where the helix is actually used), not on an
+        # isolated number. b is fixed so all prompts share structure -> the operand-a
+        # token sits at a constant index and the batch needs no padding.
+        prompts = [f"{n}+{args.b_fixed}=" for n in values]
+        token_index = _operand_a_index(model, prompts[0])
+        print(f"[context=addition] b={args.b_fixed}; operand-a token index={token_index}")
+    else:
+        prompts = [f" {n}" for n in values]          # bare number; space-prefixed last token
+        token_index = -1
 
     out = config.run_dir("week1_number_representation", args.seed)
     # One batched forward sweep caches resid_post at every layer at once (vs. a full
     # forward per layer). Read each layer's activations out of the returned dict.
     hooks = [f"blocks.{layer}.hook_resid_post" for layer in range(spec.n_layers)]
-    acts_by_hook = cache_number_site_all_layers(model, prompts, hooks, token_index=-1)
+    acts_by_hook = cache_number_site_all_layers(model, prompts, hooks, token_index=token_index)
     per_layer = []
     for layer in range(spec.n_layers):
         acts = acts_by_hook[f"blocks.{layer}.hook_resid_post"]  # (N, d)
@@ -68,6 +100,8 @@ def main():
     summary = {
         "model": args.model, "hf_id": spec.hf_id, "n_numbers": len(values),
         "value_range": [int(values[0]), int(values[-1])], "n_pca": args.n_pca,
+        "context": args.context,
+        "b_fixed": args.b_fixed if args.context == "addition" else None,
         "per_layer": per_layer,
         "expected_build_layers": list(spec.build_layers),
         "best_layer": max(per_layer, key=lambda r: r["helix_minus_baseline"])["layer"],

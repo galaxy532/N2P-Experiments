@@ -94,18 +94,37 @@ def helix_coords(values, fitres) -> np.ndarray:
     return X @ fitres["C"]
 
 
-def baseline_pca_r2(acts: np.ndarray, values: np.ndarray, n_pca: int = 9) -> float:
-    """Matched-dimension control: how well does a generic degree-k polynomial of `a`
-    (same #params as the helix) explain the same PCA subspace? The helix is only
-    interesting if it MATCHES or BEATS this despite being more constrained
-    (the [kantamneni2025] capacity argument; cf. few-readings-circuit-finding-5).
+def baseline_pca_r2(acts: np.ndarray, values: np.ndarray, n_pca: int = 9,
+                    periods=DEFAULT_PERIODS) -> float:
+    """Matched-capacity control, following [kantamneni2025] §4.4 exactly: a polynomial
+    fit with basis terms B(a) = [a, a^2, ..., a^(2k+1)] — the SAME number of
+    non-constant terms (2k+1) as the helix (one linear + 2k periodic) — fit to the same
+    PCA subspace. The helix is only interesting if it MATCHES or BEATS this despite
+    being constrained to periodic terms (the [kantamneni2025] capacity argument;
+    cf. few-readings-circuit-finding-5).
+
+    Capacity matching: the helix design (`_design_matrix`) is its 2k+1 basis functions
+    plus one intercept; this baseline is its 2k+1 polynomial terms plus one intercept —
+    matched at 2k+1 non-constant terms with one shared (uncounted) intercept each. (The
+    paper lists 2k+1 basis functions and a polynomial basis [a, ..., a^(2k+1)] with no
+    separate intercept; a default linear regression supplies an uncounted intercept on
+    both sides, which we replicate. The previous version used [a^0..a^(2k)], giving the
+    helix one extra effective DoF.)
+
+    `a` is standardized before forming powers purely for numerical conditioning: an
+    affine reparametrization of the input leaves the polynomial column space — hence the
+    R^2 — unchanged, while keeping a^(2k+1) from overflowing.
     """
     from sklearn.decomposition import PCA
 
     acts = np.asarray(acts, dtype=np.float64)
     H_pca = PCA(n_components=n_pca).fit_transform(acts - acts.mean(0, keepdims=True))
-    deg = 2 * len(DEFAULT_PERIODS)  # match helix param count
-    V = np.vander(np.asarray(values, float), N=deg + 1, increasing=True)
+    k = len(periods)
+    deg = 2 * k + 1                                   # highest power = 2k+1 (matches helix's 2k+1 basis fns)
+    a = np.asarray(values, dtype=np.float64)
+    a = (a - a.mean()) / (a.std() + 1e-12)            # standardize: R^2-invariant, fixes conditioning
+    powers = np.stack([a ** p for p in range(1, deg + 1)], axis=1)  # [a^1 .. a^(2k+1)], no constant
+    V = np.concatenate([powers, np.ones((powers.shape[0], 1))], axis=1)  # + intercept (matches helix)
     Vh, *_ = np.linalg.lstsq(V, H_pca, rcond=None)
     res = ((H_pca - V @ Vh) ** 2).sum()
     tot = ((H_pca - H_pca.mean(0)) ** 2).sum()
