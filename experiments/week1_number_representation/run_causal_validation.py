@@ -11,6 +11,7 @@ Pipeline:
         - full-layer patch from an "a'+b=" donor run (the sufficiency UPPER BOUND).
   Subspace-patch ≈ full-layer-patch  =>  the helix subspace is causally sufficient.
 
+    export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
     python experiments/week1_number_representation/run_causal_validation.py --model gptj
 
 NOTE: trickiest week-1 script; operand-token indexing and single-token answer

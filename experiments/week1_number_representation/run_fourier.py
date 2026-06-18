@@ -4,6 +4,7 @@ Take the per-number vectors (default: the token EMBEDDINGS, where the mechanism 
 claimed to originate; optionally a residual-stream layer) and show the power spectrum
 is sparse, with dominant low-freq (magnitude) and high-freq (modular) components.
 
+    export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
     python experiments/week1_number_representation/run_fourier.py --model gptj
     python experiments/week1_number_representation/run_fourier.py --model gptj --layer 16
 """
