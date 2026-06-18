@@ -90,7 +90,9 @@ N2P-Experiments/
 │   ├── week1_number_representation/
 │   │   ├── README.md
 │   │   ├── run_helix_fit.py
-│   │   ├── run_fourier.py
+│   │   ├── run_fourier.py                # DFT of resid_post / embeddings (activation space)
+│   │   ├── run_fourier_components.py     # DFT of MLP/attn output LOGITS [zhou2024 Fig 2-3]
+│   │   ├── run_fourier_components_raw.py # DFT of MLP/attn output ACTIVATIONS (SAE-relevant)
 │   │   └── run_causal_validation.py
 │   └── week1_circuit_sanity/
 │       ├── README.md
@@ -125,8 +127,10 @@ bash setup/setup_paperspace.sh          # wires HF cache to ../hf_cache (beside 
 python3 setup/download_models.py          # caches GPT-J + Llama-3-8B to ../hf_cache
 
 # week 1:
-python3 experiments/week1_number_representation/run_helix_fit.py --model gptj
-python3 experiments/week1_number_representation/run_fourier.py --model gptj
+python3 experiments/week1_number_representation/run_helix_fit.py --model gptj          # --hi default 99; --context {bare,addition}
+python3 experiments/week1_number_representation/run_fourier.py --model gptj             # embeddings; add --layer N for resid_post, --context {bare,addition}
+python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --layer 16      # MLP/attn-output LOGIT spectra; --context {bare,addition}
+python3 experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --layer 16  # MLP/attn-output ACTIVATION spectra; --context {bare,addition}
 python3 experiments/week1_number_representation/run_causal_validation.py --model gptj
 python3 experiments/week1_circuit_sanity/run_discovery_sanity.py --target tracr  # needs Edge-Pruning repo
 ```
