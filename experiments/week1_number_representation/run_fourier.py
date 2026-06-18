@@ -5,8 +5,9 @@ claimed to originate; optionally a residual-stream layer) and show the power spe
 is sparse, with dominant low-freq (magnitude) and high-freq (modular) components.
 
     export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-    python experiments/week1_number_representation/run_fourier.py --model gptj
-    python experiments/week1_number_representation/run_fourier.py --model gptj --layer 16
+    python3 experiments/week1_number_representation/run_fourier.py --model gptj
+    python3 experiments/week1_number_representation/run_fourier.py --model gptj --layer 16
+    python3 experiments/week1_number_representation/run_fourier.py --model gptj --context addition
 """
 import argparse
 import json
