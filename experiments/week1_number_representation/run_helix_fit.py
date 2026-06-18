@@ -107,12 +107,15 @@ def main():
         "expected_build_layers": list(spec.build_layers),
         "best_layer": max(per_layer, key=lambda r: r["helix_minus_baseline"])["layer"],
     }
-    (out / "summary.json").write_text(json.dumps(summary, indent=2))
-    _plot(per_layer, out / "helix_r2_by_layer.png", args.model)
-    print(f"[done] wrote {out}")
+    # Tag artifacts by context so a later run with a different --context does NOT
+    # overwrite an earlier one in the same run_dir (bare vs addition coexist).
+    (out / f"summary.{args.context}.json").write_text(json.dumps(summary, indent=2))
+    _plot(per_layer, out / f"helix_r2_by_layer.{args.context}.png", args.model,
+          args.context, summary["value_range"])
+    print(f"[done] wrote {out} (context={args.context})")
 
 
-def _plot(per_layer, path, model):
+def _plot(per_layer, path, model, context, value_range):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -122,7 +125,9 @@ def _plot(per_layer, path, model):
     plt.plot(L, [r["poly_baseline_r2"] for r in per_layer], label="poly baseline R²",
              marker="x", ms=3)
     plt.xlabel("layer"); plt.ylabel("R² of number-token resid_post")
-    plt.title(f"Helix vs poly baseline — {model}"); plt.legend(); plt.tight_layout()
+    plt.title(f"Helix vs poly baseline — {model} "
+              f"(context={context}, a∈[{value_range[0]}..{value_range[1]}])")
+    plt.legend(); plt.tight_layout()
     plt.savefig(path, dpi=130)
 
 
