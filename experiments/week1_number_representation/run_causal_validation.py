@@ -115,7 +115,10 @@ def main():
         "subspace_over_full_ratio": float(arr_sub.mean() / max(arr_full.mean(), 1e-6)),
         "interpretation": "ratio near 1.0 => helix subspace is causally sufficient",
     }
-    out = config.run_dir("week1_number_representation", args.seed)
+    # Causal validation is inherently an addition-task experiment (patches a+b logits).
+    out = config.run_dir("week1_number_representation", args.seed,
+                         label="run_causal_validation/addition",
+                         meta={"script": "run_causal_validation.py", "context": "addition"})
     (out / "causal_validation.json").write_text(
         json.dumps({"summary": summary, "trials": results}, indent=2))
     print(json.dumps(summary, indent=2))

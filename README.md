@@ -98,15 +98,28 @@ N2P-Experiments/
 │       ├── README.md
 │       └── run_greaterthan.py
 ├── results/                   # outputs (gitignored except manifests)
+│   └── <exp>/<script>/<context>/   # human-readable: one folder per script, sub-folder
+│                                   # per context; files carry only what the path doesn't
+│                                   # (layer/site). run_meta.json holds date/sha/seed/cmd.
+│       # e.g. week1_number_representation/run_fourier/bare/resid_post.L16.png
+│       #      week1_number_representation/run_fourier_components/addition/L33.png
 └── logs/
     └── runlog.md              # APPEND ONE LINE PER RUN (mirrors wiki/log.md style)
 ```
 
 ## 4. Protocol conventions (keep these stable)
 
-- **Determinism:** every run takes a `--seed` (default 0) and writes its full config
-  to `results/<exp>/<run_id>/config.json`. `run_id = <date>-<git_short_sha>-<seed>`.
-- **Results are immutable per run.** Never overwrite; new run = new `run_id`.
+- **Determinism:** every run takes a `--seed` (default 0).
+- **Output layout (human-readable):** outputs go to
+  `results/<exp>/<script>/<context>/` — **one folder per script, a sub-folder per
+  context** (`bare` / `addition`). File names inside carry only what the path does not
+  already say (the layer/site, e.g. `resid_post.L16.png`, `L33.png`). Build the path via
+  `config.run_dir(exp, seed, label="run_fourier/bare", meta={...})`.
+- **Provenance, not immutable dirs.** Re-running a `(script, context)` **overwrites in
+  place**; the exact `date`, `git_sha`, `seed` and command line are recorded in
+  `run_meta.json` in that folder (plus any `meta=` fields). This replaces the old
+  immutable `<date>-<sha>-s<seed>` run-id dirs — readability over per-run archival. For a
+  one-off immutable snapshot, omit `label` (legacy run-id path still works).
 - **Logging:** append one line per run to `logs/runlog.md`:
   `## [YYYY-MM-DD] <script> | model=<m> task=<t> seed=<s> | <one-line result> | results/<path>`
 - **Models are referenced by registry key** (`gptj`, `llama3-8b`) from `config.py`,

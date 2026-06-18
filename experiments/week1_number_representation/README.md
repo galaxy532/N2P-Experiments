@@ -37,6 +37,22 @@ points (prime), so the predicted periods 2/2.5/5/10 do not land on DFT bins and 
 leak (dominant periods read ~10.03 instead of 10.0). For exact bin alignment use **360
 sample points** — `--lo 1 --hi 360` or `--lo 0 --hi 359`. Default left at 360.
 
+## Outputs (where each run lands)
+One folder per script, a sub-folder per context; file names carry only the layer/site.
+
+```
+results/week1_number_representation/
+├── run_helix_fit/{bare,addition}/             summary.json, helix_r2_by_layer.png
+├── run_fourier/{bare,addition}/               embedding.png|json, resid_post.L<n>.png|json
+├── run_fourier_components/{bare,addition}/     L<n>.png|json   (logit-lens, MLP|attn panels)
+├── run_fourier_components_raw/{bare,addition}/ L<n>.png|json   (raw activations)
+└── run_causal_validation/addition/            causal_validation.json
+```
+
+Each folder also has a `run_meta.json` (date, git sha, seed, exact command). Re-running a
+`(script, context)` overwrites in place — provenance lives in `run_meta.json`, not the
+folder name.
+
 ## What each result feeds downstream
 - The **build layer** found by `run_helix_fit` → the site where week-2 SAEs are trained.
 - The **PCA/helix subspace** → the hypothesized target the week-4 exclusivity test and

@@ -104,7 +104,10 @@ def main():
         "attn": fourier.number_dft(caches[attn_hook], values),
     }
     site = f"components_raw.L{args.layer}"
-    out = config.run_dir("week1_number_representation", args.seed)
+    out = config.run_dir("week1_number_representation", args.seed,
+                         label=f"run_fourier_components_raw/{args.context}",
+                         meta={"script": "run_fourier_components_raw.py",
+                               "context": args.context, "layer": args.layer})
     summary = {
         "model": args.model, "site": site, "context": args.context,
         "layer": args.layer,
@@ -114,8 +117,9 @@ def main():
         "mlp_dominant_periods_top10": [float(p) for p in specs["mlp"]["dominant_periods"]],
         "attn_dominant_periods_top10": [float(p) for p in specs["attn"]["dominant_periods"]],
     }
-    (out / f"fourier_{site}.{args.context}.json").write_text(json.dumps(summary, indent=2))
-    _plot(specs, out / f"fourier_{site}.{args.context}.png",
+    # Folder = run_fourier_components_raw/<context>; file only needs the layer.
+    (out / f"L{args.layer}.json").write_text(json.dumps(summary, indent=2))
+    _plot(specs, out / f"L{args.layer}.png",
           args.model, args.layer, args.context)
     print(f"[done] MLP top5 periods:  {summary['mlp_dominant_periods_top10'][:5]}")
     print(f"[done] attn top5 periods: {summary['attn_dominant_periods_top10'][:5]}")

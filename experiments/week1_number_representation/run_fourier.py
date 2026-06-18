@@ -91,7 +91,9 @@ def main():
         ctx_tag = args.context
 
     spec = fourier.number_dft(acts, values)
-    out = config.run_dir("week1_number_representation", args.seed)
+    out = config.run_dir("week1_number_representation", args.seed,
+                         label=f"run_fourier/{ctx_tag}",
+                         meta={"script": "run_fourier.py", "context": ctx_tag, "site": site})
     summary = {
         "model": args.model, "site": site, "context": ctx_tag,
         "b_fixed": args.b_fixed if (args.layer is not None and args.context == "addition") else None,
@@ -99,10 +101,10 @@ def main():
         "value_range": [int(values[0]), int(values[-1])],
         "dominant_periods_top10": [float(p) for p in spec["dominant_periods"]],
     }
-    # Tag by site AND context so a later run does not overwrite an earlier one in the
-    # same run_dir (embedding vs resid_post.L*, and bare vs addition, all coexist).
-    (out / f"fourier_{site}.{ctx_tag}.json").write_text(json.dumps(summary, indent=2))
-    _plot(spec, out / f"fourier_{site}.{ctx_tag}.png", args.model, site, ctx_tag)
+    # Folder already encodes script + context (run_fourier/<ctx_tag>); the file name only
+    # needs the site (embedding vs resid_post.L*), which the path does not say.
+    (out / f"{site}.json").write_text(json.dumps(summary, indent=2))
+    _plot(spec, out / f"{site}.png", args.model, site, ctx_tag)
     print(f"[done] dominant periods (top 5): {summary['dominant_periods_top10'][:5]}")
     print(f"[done] wrote {out} (site={site}, context={ctx_tag})")
 

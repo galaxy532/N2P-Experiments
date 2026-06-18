@@ -1,9 +1,12 @@
 """Central config: model registry, paths, device. Scripts reference models by KEY."""
 from __future__ import annotations
 
+import json
 import os
 import subprocess
+import sys
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 
 import torch
@@ -68,11 +71,34 @@ def git_short_sha() -> str:
 
 
 def run_id(seed: int) -> str:
-    from datetime import date
     return f"{date.today().isoformat()}-{git_short_sha()}-s{seed}"
 
 
-def run_dir(experiment: str, seed: int) -> Path:
-    d = RESULTS_DIR / experiment / run_id(seed)
+def run_dir(experiment: str, seed: int, *, label: str | None = None,
+            meta: dict | None = None) -> Path:
+    """Return (and create) the output directory for a run.
+
+    Preferred (human-readable) layout: pass ``label`` = a descriptive sub-path such as
+    ``"run_fourier/bare"`` (one folder per script, a sub-folder per context). Outputs are
+    organized by that path and the latest run overwrites in place; full provenance — the
+    date, git short sha, seed and exact command line — is written to ``run_meta.json``
+    inside the folder, plus anything passed in ``meta``. Inside the folder, file names
+    only need to carry what the path does *not* already say (e.g. the layer/site).
+
+    Legacy: omit ``label`` to fall back to the immutable per-run id
+    ``<date>-<sha>-s<seed>`` (kept for callers that have not migrated).
+    """
+    sub = label if label is not None else run_id(seed)
+    d = RESULTS_DIR / experiment / sub
     d.mkdir(parents=True, exist_ok=True)
+    prov = {
+        "date": date.today().isoformat(),
+        "git_sha": git_short_sha(),
+        "seed": seed,
+        "command": " ".join(sys.argv),
+        "written_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    if meta:
+        prov.update(meta)
+    (d / "run_meta.json").write_text(json.dumps(prov, indent=2))
     return d

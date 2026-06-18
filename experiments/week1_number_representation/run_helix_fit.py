@@ -82,7 +82,9 @@ def main():
         prompts = [f" {n}" for n in values]          # bare number; space-prefixed last token
         token_index = -1
 
-    out = config.run_dir("week1_number_representation", args.seed)
+    out = config.run_dir("week1_number_representation", args.seed,
+                         label=f"run_helix_fit/{args.context}",
+                         meta={"script": "run_helix_fit.py", "context": args.context})
     # One batched forward sweep caches resid_post at every layer at once (vs. a full
     # forward per layer). Read each layer's activations out of the returned dict.
     hooks = [f"blocks.{layer}.hook_resid_post" for layer in range(spec.n_layers)]
@@ -107,10 +109,9 @@ def main():
         "expected_build_layers": list(spec.build_layers),
         "best_layer": max(per_layer, key=lambda r: r["helix_minus_baseline"])["layer"],
     }
-    # Tag artifacts by context so a later run with a different --context does NOT
-    # overwrite an earlier one in the same run_dir (bare vs addition coexist).
-    (out / f"summary.{args.context}.json").write_text(json.dumps(summary, indent=2))
-    _plot(per_layer, out / f"helix_r2_by_layer.{args.context}.png", args.model,
+    # Folder = run_helix_fit/<context>; the context is in the path, so plain file names.
+    (out / "summary.json").write_text(json.dumps(summary, indent=2))
+    _plot(per_layer, out / "helix_r2_by_layer.png", args.model,
           args.context, summary["value_range"])
     print(f"[done] wrote {out} (context={args.context})")
 
