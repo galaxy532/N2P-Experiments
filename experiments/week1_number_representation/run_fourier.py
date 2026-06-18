@@ -22,6 +22,16 @@ from n2p.number_repr import fourier                    # noqa: E402
 from n2p.number_repr.causal import cache_number_site_all_layers  # noqa: E402
 
 
+def _operand_a_index(model, prompt):
+    """Index of the operand-a token in an '{a}+{b}=' prompt (after BOS). Assumes a is a
+    single token; returns the first position whose token contains a digit. Mirrors
+    run_helix_fit / run_causal_validation so the scripts read the same site."""
+    for i, t in enumerate(model.to_str_tokens(prompt)):
+        if any(c.isdigit() for c in t):
+            return i
+    raise ValueError(f"could not locate operand a in {model.to_str_tokens(prompt)}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="gptj")
@@ -29,6 +39,14 @@ def main():
     ap.add_argument("--hi", type=int, default=360)
     ap.add_argument("--layer", type=int, default=None,
                     help="if set, analyze resid_post at this layer; else token embeddings")
+    ap.add_argument("--context", choices=["bare", "addition"], default="bare",
+                    help="bare: isolated number token ' {a}'. addition: operand-a token "
+                         "inside an '{a}+{b}=' prompt ([kantamneni2025] §4.3). Only applies "
+                         "when --layer is set — token embeddings are context-free, so "
+                         "--context is ignored for the embedding site.")
+    ap.add_argument("--b_fixed", type=int, default=5,
+                    help="fixed second operand b for '{a}+{b}=' prompts when --context "
+                         "addition and --layer is set.")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
@@ -48,36 +66,54 @@ def main():
             values = values[:cut]
 
     if args.layer is None:
-        # Embedding matrix rows for the number tokens.
+        # Embedding matrix rows for the number tokens — context-free by construction.
+        if args.context == "addition":
+            print("[warn] --context addition has no effect on the embedding site "
+                  "(token embeddings carry no prompt context); analyzing W_E rows.")
         ids = torch.tensor([tok_map[int(v)] for v in values], device=model.cfg.device)
         acts = model.W_E[ids].float().cpu().numpy()    # (N, d)
         site = "embedding"
+        ctx_tag = "bare"
     else:
-        prompts = [f" {n}" for n in values]
+        if args.context == "addition":
+            # operand-a token inside '{a}+{b}=' (b fixed -> equal-length, constant index)
+            prompts = [f"{n}+{args.b_fixed}=" for n in values]
+            token_index = _operand_a_index(model, prompts[0])
+            print(f"[context=addition] b={args.b_fixed}; operand-a token index={token_index}")
+        else:
+            prompts = [f" {n}" for n in values]        # bare number; space-prefixed last token
+            token_index = -1
         hook = f"blocks.{args.layer}.hook_resid_post"
-        acts = cache_number_site_all_layers(model, prompts, [hook])[hook]  # batched fwd
+        acts = cache_number_site_all_layers(model, prompts, [hook],
+                                            token_index=token_index)[hook]  # batched fwd
         site = f"resid_post.L{args.layer}"
+        ctx_tag = args.context
 
     spec = fourier.number_dft(acts, values)
     out = config.run_dir("week1_number_representation", args.seed)
     summary = {
-        "model": args.model, "site": site, "n_numbers": len(values),
+        "model": args.model, "site": site, "context": ctx_tag,
+        "b_fixed": args.b_fixed if (args.layer is not None and args.context == "addition") else None,
+        "n_numbers": len(values),
+        "value_range": [int(values[0]), int(values[-1])],
         "dominant_periods_top10": [float(p) for p in spec["dominant_periods"]],
     }
-    (out / f"fourier_{site}.json").write_text(json.dumps(summary, indent=2))
-    _plot(spec, out / f"fourier_{site}.png", args.model, site)
+    # Tag by site AND context so a later run does not overwrite an earlier one in the
+    # same run_dir (embedding vs resid_post.L*, and bare vs addition, all coexist).
+    (out / f"fourier_{site}.{ctx_tag}.json").write_text(json.dumps(summary, indent=2))
+    _plot(spec, out / f"fourier_{site}.{ctx_tag}.png", args.model, site, ctx_tag)
     print(f"[done] dominant periods (top 5): {summary['dominant_periods_top10'][:5]}")
-    print(f"[done] wrote {out}")
+    print(f"[done] wrote {out} (site={site}, context={ctx_tag})")
 
 
-def _plot(spec, path, model, site):
+def _plot(spec, path, model, site, context):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     plt.figure(figsize=(8, 4))
     plt.plot(spec["freqs"], spec["power"], marker="o", ms=2)
     plt.xlabel("frequency (cycles / integer)"); plt.ylabel("mean power")
-    plt.title(f"Number DFT — {model} — {site}"); plt.tight_layout()
+    plt.title(f"Number DFT — {model} — {site} (context={context})"); plt.tight_layout()
     plt.savefig(path, dpi=130)
 
 
