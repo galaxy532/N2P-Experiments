@@ -82,6 +82,13 @@ def main():
                     default="amplitude", dest="power_transform",
                     help="--summary colour scale: amplitude=sqrt(mean power)=||C_k|| "
                          "(default, linear); power=raw; log=log10.")
+    ap.add_argument("--cmap", default="inferno_r",
+                    help="--summary colormap (default inferno_r, light background so "
+                         "near-zero cells read light, not black).")
+    ap.add_argument("--vmax-percentile", type=float, default=99.5,
+                    dest="vmax_percentile",
+                    help="--summary robust colour-limit percentile (default 99.5 so a "
+                         "single low-freq spike doesn't wash out the rest; 100=true max).")
     ap.add_argument("--lo", type=int, default=0)
     ap.add_argument("--hi", type=int, default=360)
     ap.add_argument("--context", choices=["bare", "addition"], default="bare",
@@ -171,6 +178,7 @@ def _run_summary(model, args, prompts, token_index, values, out):
         [("MLP output", mlp_mat), ("Attention output", attn_mat)],
         freqs, layers, args.context, out / "summary_layers.png",
         model=args.model, value_unit="activation", transform=args.power_transform,
+        cmap=args.cmap, vmax_percentile=args.vmax_percentile,
         title=f"Component-output activations in Fourier space across layers — "
               f"{args.model} (context={args.context})")
     summary = {

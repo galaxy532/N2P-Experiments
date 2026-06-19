@@ -81,18 +81,19 @@ def _draw_panel(ax, layers, freqs, matrix, transform, cmap, vmin, vmax):
         y_edges = np.array([freqs[0] - 0.5, freqs[0] + 0.5])
     mesh = ax.pcolormesh(x_edges, y_edges, Z, cmap=cmap, vmin=vmin, vmax=vmax,
                          shading="flat")
-    # Mark the reference periods (freq = 1/period) on a right-hand period axis.
+    # Mark the reference periods (freq = 1/period). Neutral gray reads on both light-
+    # and dark-background colormaps.
     for p in REFERENCE_PERIODS:
         f = 1.0 / p
         if freqs[0] <= f <= freqs[-1]:
-            ax.axhline(f, color="white", lw=0.5, ls="--", alpha=0.45)
+            ax.axhline(f, color="0.5", lw=0.5, ls="--", alpha=0.6)
     ax.set_xlabel("layer index")
     return mesh
 
 
 def plot_layer_freq_heatmap(panels, freqs, layers, context, path, *, model,
                             value_unit="logit", transform="amplitude", title=None,
-                            cmap="magma"):
+                            cmap="inferno_r", vmax_percentile=99.5):
     """Draw the Figure-3-style summary and save it to ``path``.
 
     Args:
@@ -106,6 +107,13 @@ def plot_layer_freq_heatmap(panels, freqs, layers, context, path, *, model,
                     context this summary was computed in).
         value_unit: "logit" or "activation" — only affects the colourbar label.
         transform:  amplitude | power | log (see ``apply_transform``).
+        cmap:       matplotlib colormap (default ``inferno_r`` — light background, so a
+                    near-zero cell reads as light rather than an aggressive black field).
+        vmax_percentile: robust colour limits. The scale is clipped to the
+                    [100-p, p] percentile band of the transformed values (default 99.5),
+                    so a single dominant low-frequency spike does not compress the rest
+                    of the map into one colour. Pass ``None`` or ``100`` to use the true
+                    min/max instead.
     """
     import matplotlib
     matplotlib.use("Agg")
@@ -113,8 +121,15 @@ def plot_layer_freq_heatmap(panels, freqs, layers, context, path, *, model,
 
     # Shared colour range across panels so MLP and attn are directly comparable.
     transformed = [apply_transform(m, transform) for _, m in panels]
-    vmin = float(min(t.min() for t in transformed))
-    vmax = float(max(t.max() for t in transformed))
+    allv = np.concatenate([t.ravel() for t in transformed])
+    if vmax_percentile is not None and vmax_percentile < 100:
+        vmin = float(np.percentile(allv, 100.0 - vmax_percentile))
+        vmax = float(np.percentile(allv, vmax_percentile))
+    else:
+        vmin = float(allv.min())
+        vmax = float(allv.max())
+    if vmax <= vmin:
+        vmax = vmin + 1e-9
 
     n = len(panels)
     fig, axes = plt.subplots(1, n, figsize=(6.5 * n, 4.2), sharex=True, sharey=True,

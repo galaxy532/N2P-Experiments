@@ -73,6 +73,12 @@ selects the framing, as for the per-layer plots. Colour defaults to
 L2 norm of the frequency-k coefficient vector, linear scale); `power` and `log` are also
 available. Outlier components are expected at periods ~2, 2.5, 5, 10.
 
+Readability: the colour map defaults to `--cmap inferno_r` (light background, so a
+near-zero cell reads light rather than as an aggressive black field), and colour limits
+are robust by default (`--vmax-percentile 99.5`) so the dominant low-frequency spike does
+not compress the rest of the map into one colour. Set `--vmax-percentile 100` for the
+true max, or pass any matplotlib colormap to `--cmap`.
+
 ## What each result feeds downstream
 - The **build layer** found by `run_helix_fit` → the site where week-2 SAEs are trained.
 - The **PCA/helix subspace** → the hypothesized target the week-4 exclusivity test and

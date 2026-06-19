@@ -53,6 +53,13 @@ def main():
                     default="amplitude", dest="power_transform",
                     help="--summary colour scale: amplitude=sqrt(mean power)=||C_k|| "
                          "(default, linear); power=raw; log=log10.")
+    ap.add_argument("--cmap", default="inferno_r",
+                    help="--summary colormap (default inferno_r, light background so "
+                         "near-zero cells read light, not black).")
+    ap.add_argument("--vmax-percentile", type=float, default=99.5,
+                    dest="vmax_percentile",
+                    help="--summary robust colour-limit percentile (default 99.5 so a "
+                         "single low-freq spike doesn't wash out the rest; 100=true max).")
     ap.add_argument("--context", choices=["bare", "addition"], default="bare",
                     help="bare: isolated number token ' {a}'. addition: operand-a token "
                          "inside an '{a}+{b}=' prompt ([kantamneni2025] §4.3). Only applies "
@@ -157,7 +164,8 @@ def _run_summary(model, args, values):
     plotting.plot_layer_freq_heatmap(
         [("resid_post", mat)], freqs, layers, args.context,
         out / "summary_resid_post.png", model=args.model, value_unit="activation",
-        transform=args.power_transform,
+        transform=args.power_transform, cmap=args.cmap,
+        vmax_percentile=args.vmax_percentile,
         title=f"Residual-stream Fourier components across layers — {args.model} "
               f"(context={args.context})")
     summary = {
