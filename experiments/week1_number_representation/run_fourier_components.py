@@ -19,7 +19,8 @@ logit-space claim, so it is reproduced here, not in the activation-space run_fou
     # bare number prompts (default), layer 16:
     python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --layer 16
     # addition prompts (the canonical Fig 2/3 setting, answer-token site):
-    python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --layer 33 --context addition
+    python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --layer 27 --context addition
+    python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --summary
 
 NOTE on the DFT: W_U projection uses the raw unembedding only (models load via
 from_pretrained_no_processing, so ln_final is NOT folded and we do not apply it). The

@@ -8,6 +8,7 @@ is sparse, with dominant low-freq (magnitude) and high-freq (modular) components
     python3 experiments/week1_number_representation/run_fourier.py --model gptj
     python3 experiments/week1_number_representation/run_fourier.py --model gptj --layer 16
     python3 experiments/week1_number_representation/run_fourier.py --model gptj --context addition
+    python3 experiments/week1_number_representation/run_fourier.py --model gptj --summary
 """
 import argparse
 import json

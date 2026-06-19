@@ -21,6 +21,7 @@ run_fourier.py: bare = isolated number token ' {n}'; addition = operand-a token 
     export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
     python3 experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --layer 16
     python3 experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --layer 16 --context addition
+    python3 experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --summary
 
 NOTE on --hi 360: with --lo 0 inclusive, 0..360 is 361 points (prime), so periods
 2/2.5/5/10 do not land on DFT bins and read slightly off (e.g. 10.03); cosmetic only.
