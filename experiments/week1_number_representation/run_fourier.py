@@ -1,14 +1,26 @@
-"""Week 1 — Fourier-feature check [zhou2024].
+"""Week 1 — Fourier-feature check [zhou2024], activation space.
 
 Take the per-number vectors (default: the token EMBEDDINGS, where the mechanism is
-claimed to originate; optionally a residual-stream layer) and show the power spectrum
-is sparse, with dominant low-freq (magnitude) and high-freq (modular) components.
+claimed to originate; optionally a residual-stream layer) and show the power spectrum is
+sparse, with dominant low-freq (magnitude) and high-freq (modular) components. We DFT the
+RAW activation over a sweep of the operand `a` (no unembedding) — the object relevant to
+operand-subspace feature tracking. See the wiki exp-note for why activations are read at
+the operand token (not unembedded).
+
+Prompt framing is selected by --context (template_1..4, see n2p.number_repr.prompts) and
+the analyzed position by --read-token {a,b,sum}; the operand `a` is swept while `b` is
+FIXED (`--b_fixed`). Because the model is causal, only templates that put context BEFORE
+`a` can change the operand representation.
 
     export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-    python3 experiments/week1_number_representation/run_fourier.py --model gptj
-    python3 experiments/week1_number_representation/run_fourier.py --model gptj --layer 16
-    python3 experiments/week1_number_representation/run_fourier.py --model gptj --context addition
-    python3 experiments/week1_number_representation/run_fourier.py --model gptj --summary
+    python3 experiments/week1_number_representation/run_fourier.py --model gptj                              # embeddings
+    python3 experiments/week1_number_representation/run_fourier.py --model gptj --layer 16                   # resid_post L16, operand-a token, template_1
+    python3 experiments/week1_number_representation/run_fourier.py --model gptj --layer 16 --context template_3 --read-token a
+    python3 experiments/week1_number_representation/run_fourier.py --model gptj --summary --context template_3 --read-token sum
+
+NOTE on --hi 360: with --lo 0 inclusive, 0..360 is 361 points (prime), so periods
+2/2.5/5/10 do not land on DFT bins and read slightly off (e.g. 10.03). Use --lo 1 --hi 360
+or --lo 0 --hi 359 for exact-integer periods. Default kept at 360.
 """
 import argparse
 import json
@@ -20,18 +32,22 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from n2p import config, models                       # noqa: E402
-from n2p.number_repr import fourier, plotting          # noqa: E402
+from n2p.number_repr import fourier, plotting, prompts  # noqa: E402
 from n2p.number_repr.causal import cache_number_site_all_layers  # noqa: E402
 
 
-def _operand_a_index(model, prompt):
-    """Index of the operand-a token in an '{a}+{b}=' prompt (after BOS). Assumes a is a
-    single token; returns the first position whose token contains a digit. Mirrors
-    run_helix_fit / run_causal_validation so the scripts read the same site."""
-    for i, t in enumerate(model.to_str_tokens(prompt)):
-        if any(c.isdigit() for c in t):
-            return i
-    raise ValueError(f"could not locate operand a in {model.to_str_tokens(prompt)}")
+def _contiguous_prefix(values):
+    """Keep the contiguous integer prefix (the DFT assumes an even grid). Warn on gaps."""
+    values = np.array(sorted(values))
+    if values.size:
+        gaps = np.where(np.diff(values) != 1)[0]
+        if gaps.size:
+            cut = int(gaps[0]) + 1
+            print(f"[warn] gap after {values[cut-1]} (next single-token value is "
+                  f"{values[cut]}); dropping {len(values) - cut} value(s), using "
+                  f"contiguous {values[0]}..{values[cut-1]} ({cut} numbers)")
+            values = values[:cut]
+    return values
 
 
 def main():
@@ -60,98 +76,89 @@ def main():
                     dest="vmax_percentile",
                     help="--summary robust colour-limit percentile (default 99.5 so a "
                          "single low-freq spike doesn't wash out the rest; 100=true max).")
-    ap.add_argument("--context", choices=["bare", "addition"], default="bare",
-                    help="bare: isolated number token ' {a}'. addition: operand-a token "
-                         "inside an '{a}+{b}=' prompt ([kantamneni2025] §4.3). Only applies "
-                         "when --layer is set — token embeddings are context-free, so "
-                         "--context is ignored for the embedding site.")
+    ap.add_argument("--context", choices=prompts.TEMPLATE_CHOICES, default="template_1",
+                    help="prompt framing (see n2p.number_repr.prompts). template_1 is the "
+                         "bare operand baseline; template_3/4 put addition context before "
+                         "a. Ignored for the embedding site (W_E rows are context-free).")
+    ap.add_argument("--read-token", choices=prompts.READ_TOKEN_CHOICES, default="a",
+                    dest="read_token",
+                    help="which position to analyze: a/b = operand tokens, sum = last "
+                         "token. Embedding site only supports 'a' (the swept operand).")
     ap.add_argument("--b_fixed", type=int, default=5,
-                    help="fixed second operand b for '{a}+{b}=' prompts when --context "
-                         "addition and --layer is set.")
+                    help="fixed second operand b for templates that use it (templates 3,4).")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
+    prompts.validate_read_token(args.read_token, args.context)
 
     model = models.load_model(args.model)
     tok_map = models.number_token_ids(model, args.lo, args.hi)
-    values = np.array(sorted(tok_map))
-    # Keep the contiguous prefix from the first value; stop at the first gap. The DFT
-    # assumes an evenly sampled integer grid, so a holey set silently corrupts the
-    # spectrum. Warn so dropped numbers are visible.
-    if values.size:
-        gaps = np.where(np.diff(values) != 1)[0]
-        if gaps.size:
-            cut = int(gaps[0]) + 1
-            print(f"[warn] gap after {values[cut-1]} (next single-token value is "
-                  f"{values[cut]}); dropping {len(values) - cut} value(s), using "
-                  f"contiguous {values[0]}..{values[cut-1]} ({cut} numbers)")
-            values = values[:cut]
+    values = _contiguous_prefix(np.array(sorted(tok_map)))
 
     if args.summary:
         _run_summary(model, args, values)
         return
 
     if args.layer is None:
-        # Embedding matrix rows for the number tokens — context-free by construction.
-        if args.context == "addition":
-            print("[warn] --context addition has no effect on the embedding site "
+        # Embedding matrix rows for the swept operand — context-free by construction.
+        if args.context != "template_1":
+            print(f"[warn] --context {args.context} has no effect on the embedding site "
                   "(token embeddings carry no prompt context); analyzing W_E rows.")
+        if args.read_token != "a":
+            print(f"[warn] embedding site only varies with the swept operand; "
+                  f"--read-token {args.read_token} treated as 'a' (W_E rows).")
         ids = torch.tensor([tok_map[int(v)] for v in values], device=model.cfg.device)
         acts = model.W_E[ids].float().cpu().numpy()    # (N, d)
         site = "embedding"
-        ctx_tag = "bare"
+        read_token = "a"
     else:
-        if args.context == "addition":
-            # operand-a token inside '{a}+{b}=' (b fixed -> equal-length, constant index)
-            prompts = [f"{n}+{args.b_fixed}=" for n in values]
-            token_index = _operand_a_index(model, prompts[0])
-            print(f"[context=addition] b={args.b_fixed}; operand-a token index={token_index}")
-        else:
-            prompts = [f" {n}" for n in values]        # bare number; space-prefixed last token
-            token_index = -1
+        prompt_list = prompts.build_prompts(args.context, values, args.b_fixed)
+        token_index = prompts.read_token_index(model, prompt_list[0], args.read_token,
+                                               args.context)
+        print(f"[{args.context}] read-token={args.read_token} at index {token_index}; "
+              f"b={args.b_fixed if prompts.template_has_b(args.context) else '-'}")
         hook = f"blocks.{args.layer}.hook_resid_post"
-        acts = cache_number_site_all_layers(model, prompts, [hook],
-                                            token_index=token_index)[hook]  # batched fwd
+        acts = cache_number_site_all_layers(model, prompt_list, [hook],
+                                            token_index=token_index)[hook]
         site = f"resid_post.L{args.layer}"
-        ctx_tag = args.context
+        read_token = args.read_token
 
     spec = fourier.number_dft(acts, values)
     out = config.run_dir("week1_number_representation", args.seed,
                          model=args.model,
-                         label=f"run_fourier/{ctx_tag}",
-                         meta={"script": "run_fourier.py", "context": ctx_tag, "site": site})
+                         label=f"run_fourier/{args.context}",
+                         meta={"script": "run_fourier.py", "context": args.context,
+                               "site": site, "read_token": read_token})
     summary = {
-        "model": args.model, "site": site, "context": ctx_tag,
-        "b_fixed": args.b_fixed if (args.layer is not None and args.context == "addition") else None,
+        "model": args.model, "site": site, "context": args.context,
+        "read_token": read_token,
+        "b_fixed": args.b_fixed if (args.layer is not None
+                                    and prompts.template_has_b(args.context)) else None,
         "n_numbers": len(values),
         "value_range": [int(values[0]), int(values[-1])],
         "dominant_periods_top10": [float(p) for p in spec["dominant_periods"]],
     }
-    # Folder already encodes script + context (run_fourier/<ctx_tag>); the file name only
-    # needs the site (embedding vs resid_post.L*), which the path does not say.
-    (out / f"{site}.json").write_text(json.dumps(summary, indent=2))
-    _plot(spec, out / f"{site}.png", args.model, site, ctx_tag)
+    # Folder encodes model + script + template; the file name carries the site + read-token.
+    (out / f"{site}.{read_token}.json").write_text(json.dumps(summary, indent=2))
+    _plot(spec, out / f"{site}.{read_token}.png", args.model, site, args.context, read_token)
     print(f"[done] dominant periods (top 5): {summary['dominant_periods_top10'][:5]}")
-    print(f"[done] wrote {out} (site={site}, context={ctx_tag})")
+    print(f"[done] wrote {out} (site={site}, context={args.context}, read={read_token})")
 
 
 def _run_summary(model, args, values):
     """[zhou2024] Fig 3 for the residual stream: sweep resid_post across layers and draw
     a single layer x frequency heatmap (resid_post has no MLP/attn split)."""
-    if args.context == "addition":
-        prompts = [f"{int(v)}+{args.b_fixed}=" for v in values]
-        token_index = _operand_a_index(model, prompts[0])
-        print(f"[context=addition] b={args.b_fixed}; operand-a token index={token_index}")
-    else:
-        prompts = [f" {int(v)}" for v in values]
-        token_index = -1
-        print(f"[context=bare] {len(prompts)} isolated number prompts")
+    prompt_list = prompts.build_prompts(args.context, values, args.b_fixed)
+    token_index = prompts.read_token_index(model, prompt_list[0], args.read_token,
+                                           args.context)
+    print(f"[{args.context}] read-token={args.read_token} at index {token_index}; "
+          f"b={args.b_fixed if prompts.template_has_b(args.context) else '-'}")
 
     lo, hi = (args.layers if args.layers is not None else (0, model.cfg.n_layers - 1))
     if not (0 <= lo <= hi <= model.cfg.n_layers - 1):
         raise SystemExit(f"--layers {lo} {hi} out of range [0,{model.cfg.n_layers - 1}]")
     layers = list(range(lo, hi + 1))
     hooks = [f"blocks.{L}.hook_resid_post" for L in layers]
-    caches = cache_number_site_all_layers(model, prompts, hooks, token_index=token_index)
+    caches = cache_number_site_all_layers(model, prompt_list, hooks, token_index=token_index)
     specs = [fourier.number_dft(caches[f"blocks.{L}.hook_resid_post"], values)
              for L in layers]
     mat, freqs = plotting.stack_power(specs)
@@ -160,17 +167,19 @@ def _run_summary(model, args, values):
                          model=args.model,
                          label=f"run_fourier/{args.context}",
                          meta={"script": "run_fourier.py", "context": args.context,
-                               "site": "resid_post.summary", "summary": True})
+                               "site": "resid_post.summary", "read_token": args.read_token,
+                               "summary": True})
     plotting.plot_layer_freq_heatmap(
         [("resid_post", mat)], freqs, layers, args.context,
-        out / "summary_resid_post.png", model=args.model, value_unit="activation",
-        transform=args.power_transform, cmap=args.cmap,
+        out / f"summary_resid_post.{args.read_token}.png", model=args.model,
+        value_unit="activation", transform=args.power_transform, cmap=args.cmap,
         vmax_percentile=args.vmax_percentile,
         title=f"Residual-stream Fourier components across layers — {args.model} "
-              f"(context={args.context})")
+              f"— {args.context} — read={args.read_token}")
     summary = {
         "model": args.model, "site": "resid_post.summary", "context": args.context,
-        "transform": args.power_transform, "layers": layers,
+        "read_token": args.read_token, "transform": args.power_transform, "layers": layers,
+        "b_fixed": args.b_fixed if prompts.template_has_b(args.context) else None,
         "n_numbers": int(values.size),
         "value_range": [int(values[0]), int(values[-1])],
         "freqs": [float(f) for f in freqs],
@@ -178,20 +187,22 @@ def _run_summary(model, args, values):
             int(L): [float(p) for p in s["dominant_periods"][:5]]
             for L, s in zip(layers, specs)},
     }
-    (out / "summary_resid_post.json").write_text(json.dumps(summary, indent=2))
+    (out / f"summary_resid_post.{args.read_token}.json").write_text(json.dumps(summary, indent=2))
     print(f"[done] summary heatmap over layers {lo}..{hi} "
-          f"(transform={args.power_transform})")
-    print(f"[done] wrote {out}/summary_resid_post.png (context={args.context})")
+          f"(transform={args.power_transform}, read={args.read_token})")
+    print(f"[done] wrote {out}/summary_resid_post.{args.read_token}.png "
+          f"(context={args.context})")
 
 
-def _plot(spec, path, model, site, context):
+def _plot(spec, path, model, site, context, read_token):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     plt.figure(figsize=(8, 4))
     plt.plot(spec["freqs"], spec["power"], marker="o", ms=2)
     plt.xlabel("frequency (cycles / integer)"); plt.ylabel("mean power")
-    plt.title(f"Number DFT — {model} — {site} (context={context})"); plt.tight_layout()
+    plt.title(f"Number DFT — {model} — {site} ({context}, read={read_token})")
+    plt.tight_layout()
     plt.savefig(path, dpi=130)
 
 

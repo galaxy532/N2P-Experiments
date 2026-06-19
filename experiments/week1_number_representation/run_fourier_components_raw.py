@@ -6,22 +6,20 @@ outputs instead of their logit-lens projection.
 
 Two different questions (see fourier-experiments-week1-results.md):
   - run_fourier_components.py  (LOGIT space):  which residue class does this component
-    PROMOTE?  -> DFT over the candidate-ANSWER axis (via W_U), answer-token site.
+    PROMOTE?  -> DFT over the candidate-ANSWER axis (via W_U), read at the sum token.
   - run_fourier_components_raw.py (ACTIVATION space, here): is this component's OUTPUT
     REPRESENTATION sparse in frequency over the INPUT number? -> DFT the d-dim activation
     vectors over the input-number sweep, power averaged over dims. This is the object
     closest to what week-2 SAEs ingest (SAEs train on these raw outputs, not on logits).
 
-Because a raw activation is just a d-vector with no number axis inside it, the number
-axis comes from SWEEPING input numbers — exactly like run_fourier.py — not from a vocab
-projection. So --context controls the prompt/token the sweep reads, mirroring
-run_fourier.py: bare = isolated number token ' {n}'; addition = operand-a token in
-'{a}+{b}=' (b fixed).
+A raw activation has no number axis inside it, so the axis comes from SWEEPING the operand
+`a`. Prompt framing is --context (template_1..4, see n2p.number_repr.prompts) and the read
+position is --read-token {a,b,sum}; `b` is FIXED (`--b_fixed`).
 
     export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
     python3 experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --layer 16
-    python3 experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --layer 16 --context addition
-    python3 experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --summary
+    python3 experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --layer 16 --context template_3 --read-token a
+    python3 experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --summary --context template_3
 
 NOTE on --hi 360: with --lo 0 inclusive, 0..360 is 361 points (prime), so periods
 2/2.5/5/10 do not land on DFT bins and read slightly off (e.g. 10.03); cosmetic only.
@@ -33,22 +31,11 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from n2p import config, models                       # noqa: E402
-from n2p.number_repr import fourier, plotting          # noqa: E402
+from n2p.number_repr import fourier, plotting, prompts  # noqa: E402
 from n2p.number_repr.causal import cache_number_site_all_layers  # noqa: E402
-
-
-def _operand_a_index(model, prompt):
-    """Index of the operand-a token in an '{a}+{b}=' prompt (after BOS). First position
-    whose token contains a digit. Mirrors run_fourier / run_helix_fit so the scripts read
-    the same site."""
-    for i, t in enumerate(model.to_str_tokens(prompt)):
-        if any(c.isdigit() for c in t):
-            return i
-    raise ValueError(f"could not locate operand a in {model.to_str_tokens(prompt)}")
 
 
 def _contiguous_prefix(values):
@@ -91,48 +78,48 @@ def main():
                          "single low-freq spike doesn't wash out the rest; 100=true max).")
     ap.add_argument("--lo", type=int, default=0)
     ap.add_argument("--hi", type=int, default=360)
-    ap.add_argument("--context", choices=["bare", "addition"], default="bare",
-                    help="bare (default): isolated number token ' {n}'. addition: operand-a "
-                         "token inside '{a}+{b}=' (b fixed). Mirrors run_fourier.py.")
+    ap.add_argument("--context", choices=prompts.TEMPLATE_CHOICES, default="template_1",
+                    help="prompt framing (see n2p.number_repr.prompts). template_1 is the "
+                         "bare operand baseline; template_3/4 put addition context before a.")
+    ap.add_argument("--read-token", choices=prompts.READ_TOKEN_CHOICES, default="a",
+                    dest="read_token",
+                    help="which position to analyze: a/b = operand tokens, sum = last token.")
     ap.add_argument("--b_fixed", type=int, default=5,
-                    help="fixed second operand b for '{a}+{b}=' prompts when --context addition.")
+                    help="fixed second operand b for templates that use it (templates 3,4).")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     if not args.summary and args.layer is None:
         ap.error("--layer is required unless --summary is set")
+    prompts.validate_read_token(args.read_token, args.context)
 
     model = models.load_model(args.model)
     tok_map = models.number_token_ids(model, args.lo, args.hi)
-    values = _contiguous_prefix(tok_map)
+    values = _contiguous_prefix(np.array(sorted(tok_map)))
     if values.size < 8:
         raise SystemExit(f"too few single-token numbers in [{args.lo},{args.hi}] for a DFT")
 
-    if args.context == "addition":
-        prompts = [f"{int(v)}+{args.b_fixed}=" for v in values]
-        token_index = _operand_a_index(model, prompts[0])
-        print(f"[context=addition] b={args.b_fixed}; operand-a token index={token_index}")
-    else:
-        prompts = [f" {int(v)}" for v in values]
-        token_index = -1
-        print(f"[context=bare] {len(prompts)} isolated number prompts")
+    prompt_list = prompts.build_prompts(args.context, values, args.b_fixed)
+    token_index = prompts.read_token_index(model, prompt_list[0], args.read_token,
+                                           args.context)
+    print(f"[{args.context}] read-token={args.read_token} at index {token_index}; "
+          f"b={args.b_fixed if prompts.template_has_b(args.context) else '-'}")
 
     out = config.run_dir("week1_number_representation", args.seed,
                          model=args.model,
                          label=f"run_fourier_components_raw/{args.context}",
                          meta={"script": "run_fourier_components_raw.py",
-                               "context": args.context,
+                               "context": args.context, "read_token": args.read_token,
                                "layer": args.layer if not args.summary else None,
                                "summary": bool(args.summary)})
 
     if args.summary:
-        _run_summary(model, args, prompts, token_index, values, out)
+        _run_summary(model, args, prompt_list, token_index, values, out)
         return
 
     mlp_hook = f"blocks.{args.layer}.hook_mlp_out"
     attn_hook = f"blocks.{args.layer}.hook_attn_out"
-    caches = cache_number_site_all_layers(model, prompts, [mlp_hook, attn_hook],
+    caches = cache_number_site_all_layers(model, prompt_list, [mlp_hook, attn_hook],
                                           token_index=token_index)
-
     specs = {
         "mlp": fourier.number_dft(caches[mlp_hook], values),
         "attn": fourier.number_dft(caches[attn_hook], values),
@@ -140,23 +127,22 @@ def main():
     site = f"components_raw.L{args.layer}"
     summary = {
         "model": args.model, "site": site, "context": args.context,
-        "layer": args.layer,
-        "b_fixed": args.b_fixed if args.context == "addition" else None,
+        "read_token": args.read_token, "layer": args.layer,
+        "b_fixed": args.b_fixed if prompts.template_has_b(args.context) else None,
         "n_numbers": int(values.size),
         "value_range": [int(values[0]), int(values[-1])],
         "mlp_dominant_periods_top10": [float(p) for p in specs["mlp"]["dominant_periods"]],
         "attn_dominant_periods_top10": [float(p) for p in specs["attn"]["dominant_periods"]],
     }
-    # Folder = <model>/run_fourier_components_raw/<context>; file only needs the layer.
-    (out / f"L{args.layer}.json").write_text(json.dumps(summary, indent=2))
-    _plot(specs, out / f"L{args.layer}.png",
-          args.model, args.layer, args.context)
+    (out / f"L{args.layer}.{args.read_token}.json").write_text(json.dumps(summary, indent=2))
+    _plot(specs, out / f"L{args.layer}.{args.read_token}.png",
+          args.model, args.layer, args.context, args.read_token)
     print(f"[done] MLP top5 periods:  {summary['mlp_dominant_periods_top10'][:5]}")
     print(f"[done] attn top5 periods: {summary['attn_dominant_periods_top10'][:5]}")
-    print(f"[done] wrote {out} (site={site}, context={args.context})")
+    print(f"[done] wrote {out} (site={site}, context={args.context}, read={args.read_token})")
 
 
-def _run_summary(model, args, prompts, token_index, values, out):
+def _run_summary(model, args, prompt_list, token_index, values, out):
     """[zhou2024] Fig 3 in ACTIVATION space: sweep every layer, build the
     layer x frequency heatmap of MLP and attention raw-output magnitudes, side by side."""
     lo, hi = (args.layers if args.layers is not None else (0, model.cfg.n_layers - 1))
@@ -165,7 +151,7 @@ def _run_summary(model, args, prompts, token_index, values, out):
     layers = list(range(lo, hi + 1))
     mlp_hooks = [f"blocks.{L}.hook_mlp_out" for L in layers]
     attn_hooks = [f"blocks.{L}.hook_attn_out" for L in layers]
-    caches = cache_number_site_all_layers(model, prompts, mlp_hooks + attn_hooks,
+    caches = cache_number_site_all_layers(model, prompt_list, mlp_hooks + attn_hooks,
                                           token_index=token_index)
     mlp_specs = [fourier.number_dft(caches[f"blocks.{L}.hook_mlp_out"], values)
                  for L in layers]
@@ -176,15 +162,15 @@ def _run_summary(model, args, prompts, token_index, values, out):
     attn_mat, _ = plotting.stack_power(attn_specs)
     plotting.plot_layer_freq_heatmap(
         [("MLP output", mlp_mat), ("Attention output", attn_mat)],
-        freqs, layers, args.context, out / "summary_layers.png",
+        freqs, layers, args.context, out / f"summary_layers.{args.read_token}.png",
         model=args.model, value_unit="activation", transform=args.power_transform,
         cmap=args.cmap, vmax_percentile=args.vmax_percentile,
         title=f"Component-output activations in Fourier space across layers — "
-              f"{args.model} (context={args.context})")
+              f"{args.model} — {args.context} — read={args.read_token}")
     summary = {
         "model": args.model, "site": "components_raw.summary", "context": args.context,
-        "transform": args.power_transform,
-        "b_fixed": args.b_fixed if args.context == "addition" else None,
+        "read_token": args.read_token, "transform": args.power_transform,
+        "b_fixed": args.b_fixed if prompts.template_has_b(args.context) else None,
         "layers": layers, "n_numbers": int(values.size),
         "value_range": [int(values[0]), int(values[-1])],
         "freqs": [float(f) for f in freqs],
@@ -195,10 +181,10 @@ def _run_summary(model, args, prompts, token_index, values, out):
             int(L): [float(p) for p in s["dominant_periods"][:5]]
             for L, s in zip(layers, attn_specs)},
     }
-    (out / "summary_layers.json").write_text(json.dumps(summary, indent=2))
+    (out / f"summary_layers.{args.read_token}.json").write_text(json.dumps(summary, indent=2))
     print(f"[done] summary heatmap over layers {lo}..{hi} "
-          f"(transform={args.power_transform})")
-    print(f"[done] wrote {out}/summary_layers.png (context={args.context})")
+          f"(transform={args.power_transform}, read={args.read_token})")
+    print(f"[done] wrote {out}/summary_layers.{args.read_token}.png (context={args.context})")
 
 
 def _annotate(ax, spec, k=6):
@@ -210,7 +196,7 @@ def _annotate(ax, spec, k=6):
                     textcoords="offset points", xytext=(0, 4), fontsize=7, ha="center")
 
 
-def _plot(specs, path, model, layer, context):
+def _plot(specs, path, model, layer, context, read_token):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -224,7 +210,7 @@ def _plot(specs, path, model, layer, context):
         ax.set_title(f"{title} — L{layer}")
     axes[0].set_ylabel("mean power (activation)")
     fig.suptitle(f"Component-output activations in Fourier space — {model} "
-                 f"— L{layer} (context={context})")
+                 f"— L{layer} ({context}, read={read_token})")
     fig.tight_layout()
     fig.savefig(path, dpi=130)
 

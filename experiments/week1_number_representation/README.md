@@ -15,23 +15,40 @@ This is go/no-go gate #1.
 | `run_causal_validation.py` | causal sufficiency [engels2024 §5] | subspace-patch ÷ full-layer-patch logit-diff ratio near 1.0 |
 
 **The two `*_components*` scripts answer different questions.** `run_fourier_components.py`
-(logit lens, answer-token site) asks *which residue class a component promotes* — DFT over
-the candidate-**answer** axis. `run_fourier_components_raw.py` (raw activations, input-number
-sweep like `run_fourier.py`) asks *whether the component's output representation is sparse in
-frequency over the **input** number* — the activation-space object closest to SAE feature
-tracking. Same side-by-side MLP|attn layout; different axis.
+(logit lens, read at the **sum** token via `--read-token sum`) asks *which residue class a
+component promotes* — DFT over the candidate-**answer** axis. `run_fourier_components_raw.py`
+(raw activations, input-number sweep like `run_fourier.py`) asks *whether the component's
+output representation is sparse in frequency over the **input** number* — the activation-space
+object closest to SAE feature tracking. Same side-by-side MLP|attn layout; different axis.
+
+## Prompt templates & read-token (all four representation scripts)
+`--context` selects the prompt framing and `--read-token {a,b,sum}` the analyzed position;
+the operand `a` is swept while `b` is fixed (`--b_fixed`). Because the model is causal, only
+templates that put context *before* `a` can change the operand representation (see
+`fourier-experiments-week1-results.md`).
+
+| `--context` | prompt | has b | sum token |
+|---|---|---|---|
+| `template_1` | `" {a}"` (bare baseline) | no | =a |
+| `template_2` | `"The number {a}"` | no | =a |
+| `template_3` | `"What is the sum of {a} and {b}? Answer:"` | yes | `:` |
+| `template_4` | `"Compute {a} + {b} ="` | yes | `=` |
+
+`--read-token a` = operand-a token (its internal representation); `b` = operand-b token
+(only templates 3–4); `sum` = last token (the only meaningful logit-lens site for
+`run_fourier_components`). Defaults: `a` for the activation scripts + helix, `sum` for the
+logit-lens script.
 
 ```bash
-python experiments/week1_number_representation/run_helix_fit.py        --model gptj                 # --hi default 99; --context {bare,addition}
-python experiments/week1_number_representation/run_fourier.py          --model gptj                 # embeddings (activation space)
-python experiments/week1_number_representation/run_fourier.py          --model gptj --layer 16       # resid_post; --context {bare,addition}
-python experiments/week1_number_representation/run_fourier_components.py     --model gptj --layer 16      # MLP/attn output LOGITS, side by side; --context {bare,addition}
-python experiments/week1_number_representation/run_fourier_components.py     --model gptj --layer 33 --context addition  # canonical Fig 2/3 (answer-token site)
-python experiments/week1_number_representation/run_fourier_components.py     --model gptj --summary --context addition   # Fig 3 across-layers heatmap (MLP|attn)
-python experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --layer 16      # MLP/attn output ACTIVATIONS, side by side; --context {bare,addition}
-python experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --summary       # Fig 3 across-layers heatmap (activation space)
-python experiments/week1_number_representation/run_fourier.py               --model gptj --summary       # resid_post across-layers heatmap (single panel)
-python experiments/week1_number_representation/run_causal_validation.py --model gptj
+python experiments/week1_number_representation/run_helix_fit.py        --model gptj                                       # --hi default 99; --context template_*, --read-token *
+python experiments/week1_number_representation/run_fourier.py          --model gptj                                       # embeddings (activation space)
+python experiments/week1_number_representation/run_fourier.py          --model gptj --layer 16 --context template_3 --read-token a   # resid_post at operand a, addition framing
+python experiments/week1_number_representation/run_fourier_components.py     --model gptj --layer 16 --context template_3              # MLP/attn LOGITS at sum token
+python experiments/week1_number_representation/run_fourier_components.py     --model gptj --summary --context template_3 --read-token sum  # Fig 3 across-layers heatmap (MLP|attn)
+python experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --layer 16 --context template_3 --read-token a   # MLP/attn ACTIVATIONS at operand a
+python experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --summary --context template_3 --read-token a    # Fig 3 across-layers heatmap (activation space)
+python experiments/week1_number_representation/run_fourier.py               --model gptj --summary --context template_3 --read-token a     # resid_post across-layers heatmap (single panel)
+python experiments/week1_number_representation/run_causal_validation.py --model gptj   # addition-only (not template-based)
 # then repeat with --model llama3-8b (confirm build_layers in config.py from the helix sweep)
 ```
 
@@ -42,33 +59,34 @@ sample points** — `--lo 1 --hi 360` or `--lo 0 --hi 359`. Default left at 360.
 
 ## Outputs (where each run lands)
 Grouped by **model** (`GPT-J` / `Llama-3-8B`), then one folder per script, a sub-folder
-per context; file names carry only the layer/site.
+per **template**; file names carry the layer/site **and the read-token** (`.<a|b|sum>`).
 
 ```
 results/week1_number_representation/<model>/
-├── run_helix_fit/{bare,addition}/             summary.json, helix_r2_by_layer.png
-├── run_fourier/{bare,addition}/               embedding.png|json, resid_post.L<n>.png|json
-│                                              summary_resid_post.png|json   (--summary)
-├── run_fourier_components/{bare,addition}/     L<n>.png|json   (logit-lens, MLP|attn panels)
-│                                              summary_layers.png|json       (--summary)
-├── run_fourier_components_raw/{bare,addition}/ L<n>.png|json   (raw activations)
-│                                              summary_layers.png|json       (--summary)
-└── run_causal_validation/addition/            causal_validation.json
+├── run_helix_fit/template_*/             summary.<rt>.json, helix_r2_by_layer.<rt>.png
+├── run_fourier/template_*/               embedding.<rt>.png|json, resid_post.L<n>.<rt>.png|json
+│                                         summary_resid_post.<rt>.png|json   (--summary)
+├── run_fourier_components/template_*/     L<n>.<rt>.png|json   (logit-lens, MLP|attn panels)
+│                                         summary_layers.<rt>.png|json       (--summary)
+├── run_fourier_components_raw/template_*/ L<n>.<rt>.png|json   (raw activations)
+│                                         summary_layers.<rt>.png|json       (--summary)
+└── run_causal_validation/addition/       causal_validation.json   (addition-only; no template)
 ```
 `<model>` is `GPT-J` for `--model gptj`, `Llama-3-8B` for `--model llama3-8b`
-(`config.model_dir_name`).
+(`config.model_dir_name`); `<rt>` is the `--read-token` (`a`/`b`/`sum`).
 
-Each folder also has a `run_meta.json` (date, git sha, seed, model, exact command).
-Re-running a `(script, context)` overwrites in place — provenance lives in
-`run_meta.json`, not the folder name.
+Each folder also has a `run_meta.json` (date, git sha, seed, model, context, read_token,
+exact command). Re-running a `(script, context, read_token)` overwrites in place —
+provenance lives in `run_meta.json`, not the folder name.
 
 ## Across-layers summary (`--summary`, [zhou2024] Fig 3)
 The three Fourier scripts also produce the Figure-3 summary: **x = layer index, y =
 frequency, colour = component magnitude** across all layers (use `--layers LO HI` to
 restrict; the paper used the last 15). The two `*_components*` scripts draw **MLP | attn
 side by side**; `run_fourier.py --summary` sweeps `resid_post` (single panel — no
-MLP/attn split; embeddings are excluded as a single point). `--context {bare,addition}`
-selects the framing, as for the per-layer plots. Colour defaults to
+MLP/attn split; embeddings are excluded as a single point). `--context template_*` selects
+the framing and `--read-token` the position (in the filename + plot title), as for the
+per-layer plots. Colour defaults to
 `--power-transform amplitude` = `sqrt(mean power)` = `||C_k||` (per-dim RMS amplitude /
 L2 norm of the frequency-k coefficient vector, linear scale); `power` and `log` are also
 available. Outlier components are expected at periods ~2, 2.5, 5, 10.

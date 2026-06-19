@@ -1,42 +1,38 @@
 """Week 1 — component-output Fourier check in LOGIT space [zhou2024] (Figs 2-3).
 
-Reproduces zhou2024 Sec 3: the per-component LOGIT contribution of a single layer's
-MLP / attention output, transformed into Fourier space. For one layer L we read the
-MLP output and the attention output, project EACH through the unembedding W_U onto the
-single-token number ids, DFT the resulting logit-over-number signal, and plot the two
-power spectra SIDE BY SIDE.
+Reproduces zhou2024 Sec 3: the per-component LOGIT contribution of a single layer's MLP /
+attention output, transformed into Fourier space. For one layer L we read the MLP output
+and the attention output (at the chosen --read-token), project EACH through the unembedding
+W_U onto the single-token number ids, DFT the resulting logit-over-number signal, and plot
+the two power spectra SIDE BY SIDE.
 
-Why logit space and not the raw activation (see the long discussion / the exp-note
-fourier-experiments-week1-results.md): a single component's logit contribution is a
-broad PERIODIC WAVE over the whole number line (the L33 MLP "favors even numbers";
-L40 attention "favors mod 5 and mod 10", zhou2024 Fig 20), NOT a spike. Its content is
-the PERIOD, a frequency-domain property invisible to a top-k logit readout, and the
-signal is dense in the number basis but SPARSE in the frequency basis. The MLP=low-freq
-(magnitude/approximation) vs attention=high-freq (modular/classification) split is a
-logit-space claim, so it is reproduced here, not in the activation-space run_fourier.py.
+Why logit space and why the sum (answer) token (see fourier-experiments-week1-results.md):
+a single component's logit contribution is a broad PERIODIC WAVE over the whole number line
+(L33 MLP "favors even numbers"; L40 attention "favors mod 5 and mod 10"), NOT a spike. Its
+content is the PERIOD. The logit lens W_U·h is the NEXT-token readout, so it is only
+meaningful where the model is predicting the answer — the SUM token (last token before the
+answer). Reading it at the operand tokens (a/b) is the "uninteresting" case and is offered
+only for comparison.
+
+Operand `a` is SWEPT; `b` is FIXED (`--b_fixed`); power is averaged over the swept a's (the
+controlled analogue of zhou2024's "across all test data" averaging). Framing is --context
+(template_1..4); position is --read-token {a,b,sum} (default sum = answer token).
 
     export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-    # bare number prompts (default), layer 16:
-    python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --layer 16
-    # addition prompts (the canonical Fig 2/3 setting, answer-token site):
-    python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --layer 27 --context addition
-    python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --summary
+    python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --layer 16 --context template_3
+    python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --summary --context template_3   # Fig-3 heatmap, answer token
 
 NOTE on the DFT: W_U projection uses the raw unembedding only (models load via
-from_pretrained_no_processing, so ln_final is NOT folded and we do not apply it). The
-final-LayerNorm scale is a positive per-example scalar; it rescales a spectrum but does
-not move WHICH periods are present, and we average POWER across examples, so the period
-structure (the thing we read) is unaffected. Pass --apply-ln to fold it in if wanted.
+from_pretrained_no_processing, so ln_final is NOT folded). The final-LayerNorm scale is a
+positive per-example scalar; it rescales a spectrum but does not move WHICH periods are
+present, and we average POWER across examples. Pass --apply-ln to fold it in if wanted.
 
-NOTE on --hi 360: with --lo 0 inclusive, 0..360 is 361 sample points (prime) -> the
-predicted periods 2/2.5/5/10 do NOT land on DFT bins (freq k/361), so peaks LEAK across
-neighbouring bins and dominant periods read ~10.03 instead of 10.0. For exact bin
-alignment use 360 sample POINTS, e.g. --lo 1 --hi 360 or --lo 0 --hi 359. Default kept
-at 360 per request; the contiguous-range filter warns if tokenization drops values.
+NOTE on --hi 360: with --lo 0 inclusive, 0..360 is 361 points (prime) -> periods
+2/2.5/5/10 do NOT land on DFT bins and read ~10.03. For exact bins use --lo 1 --hi 360 or
+--lo 0 --hi 359. Default kept at 360.
 """
 import argparse
 import json
-import random
 import sys
 from pathlib import Path
 
@@ -45,7 +41,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from n2p import config, models                       # noqa: E402
-from n2p.number_repr import fourier, plotting          # noqa: E402
+from n2p.number_repr import fourier, plotting, prompts  # noqa: E402
 from n2p.number_repr.causal import cache_number_site_all_layers  # noqa: E402
 
 
@@ -67,8 +63,8 @@ def _logit_matrix(model, acts, number_ids, apply_ln):
     """Project component outputs (n_examples, d) onto the number-token logits.
 
     Returns (N_numbers, n_examples): column j is the logit-over-number signal that
-    example j's component output writes, so number_dft DFTs along the number axis and
-    averages power across examples (the Fig 3 averaging)."""
+    example j's component output writes, so number_dft DFTs along the candidate-number
+    axis and averages power across the swept-a examples (the Fig 3 averaging)."""
     A = torch.tensor(acts, dtype=model.cfg.dtype, device=model.cfg.device)  # (e, d)
     if apply_ln:
         A = model.ln_final(A)
@@ -103,74 +99,54 @@ def main():
                          "single low-freq spike doesn't wash out the rest; 100=true max).")
     ap.add_argument("--lo", type=int, default=0)
     ap.add_argument("--hi", type=int, default=360)
-    ap.add_argument("--context", choices=["bare", "addition"], default="bare",
-                    help="bare (default): sweep isolated number tokens ' {n}', read the "
-                         "component output at that token. addition: '{a}+{b}=' prompts, "
-                         "read the component output at the answer (last) token over a "
-                         "sample of (a,b) pairs — the canonical zhou2024 Fig 2/3 setting.")
-    ap.add_argument("--n_examples", type=int, default=128,
-                    help="number of (a,b) prompts to average power over in --context "
-                         "addition (ignored for bare, which uses the full number sweep).")
-    ap.add_argument("--b_lo", type=int, default=1,
-                    help="addition: inclusive low for the sampled second operand b.")
-    ap.add_argument("--b_hi", type=int, default=9,
-                    help="addition: inclusive high for the sampled second operand b.")
+    ap.add_argument("--context", choices=prompts.TEMPLATE_CHOICES, default="template_1",
+                    help="prompt framing (see n2p.number_repr.prompts). The canonical "
+                         "zhou2024 Fig 2/3 setting is an addition template (template_3/4) "
+                         "read at --read-token sum.")
+    ap.add_argument("--read-token", choices=prompts.READ_TOKEN_CHOICES, default="sum",
+                    dest="read_token",
+                    help="which position to read the component output at before W_U. "
+                         "sum (default) = last/answer token (the meaningful logit-lens "
+                         "site); a/b = operand tokens (comparison only).")
+    ap.add_argument("--b_fixed", type=int, default=5,
+                    help="fixed second operand b for templates that use it (templates 3,4).")
     ap.add_argument("--apply-ln", action="store_true",
                     help="fold the final LayerNorm before W_U (off by default; see header).")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     if not args.summary and args.layer is None:
         ap.error("--layer is required unless --summary is set")
+    prompts.validate_read_token(args.read_token, args.context)
 
-    rng = random.Random(args.seed)
     model = models.load_model(args.model)
     tok_map = models.number_token_ids(model, args.lo, args.hi)
-    values = _contiguous_prefix(tok_map)               # candidate-number (logit) axis
+    values = _contiguous_prefix(np.array(sorted(tok_map)))   # candidate-number (logit) axis
     if values.size < 8:
         raise SystemExit(f"too few single-token numbers in [{args.lo},{args.hi}] for a DFT")
     number_ids = [tok_map[int(v)] for v in values]
-    vset = set(int(v) for v in values)
 
-    if args.context == "addition":
-        # Sample single-token (a, b) with single-token answer a+b in range. We read the
-        # component output at the answer ('=') token; the candidate-number axis is the
-        # set of possible answers (zhou2024 analyse the answer/last token).
-        a_pool = [int(v) for v in values]
-        prompts = []
-        tries = 0
-        while len(prompts) < args.n_examples and tries < args.n_examples * 50:
-            tries += 1
-            a = rng.choice(a_pool)
-            b = rng.randint(args.b_lo, args.b_hi)
-            if (a + b) in vset and b in vset:
-                prompts.append(f"{a}+{b}=")
-        if not prompts:
-            raise SystemExit("could not build any single-token '{a}+{b}=' prompts in range")
-        token_index = -1                               # answer token
-        print(f"[context=addition] {len(prompts)} prompts, b in [{args.b_lo},{args.b_hi}], "
-              f"answer-token site")
-    else:
-        # Bare: each input number is one example; magnitude spectra are shift-invariant,
-        # so averaging power over inputs extracts WHICH periods the component writes.
-        prompts = [f" {int(v)}" for v in values]
-        token_index = -1                               # the number token
-        print(f"[context=bare] {len(prompts)} isolated number prompts")
+    prompt_list = prompts.build_prompts(args.context, values, args.b_fixed)
+    token_index = prompts.read_token_index(model, prompt_list[0], args.read_token,
+                                           args.context)
+    print(f"[{args.context}] read-token={args.read_token} at index {token_index}; "
+          f"b={args.b_fixed if prompts.template_has_b(args.context) else '-'}; "
+          f"sweep a over {values.size} values")
 
     out = config.run_dir("week1_number_representation", args.seed,
                          model=args.model,
                          label=f"run_fourier_components/{args.context}",
                          meta={"script": "run_fourier_components.py",
-                               "context": args.context,
+                               "context": args.context, "read_token": args.read_token,
                                "layer": args.layer if not args.summary else None,
                                "summary": bool(args.summary)})
 
     if args.summary:
-        _run_summary(model, args, prompts, token_index, values, number_ids, out)
+        _run_summary(model, args, prompt_list, token_index, values, number_ids, out)
         return
 
     mlp_hook = f"blocks.{args.layer}.hook_mlp_out"
     attn_hook = f"blocks.{args.layer}.hook_attn_out"
-    caches = cache_number_site_all_layers(model, prompts, [mlp_hook, attn_hook],
+    caches = cache_number_site_all_layers(model, prompt_list, [mlp_hook, attn_hook],
                                           token_index=token_index)
     specs = {}
     for name, hook in (("mlp", mlp_hook), ("attn", attn_hook)):
@@ -180,32 +156,31 @@ def main():
     site = f"components.L{args.layer}"
     summary = {
         "model": args.model, "site": site, "context": args.context,
-        "layer": args.layer, "apply_ln": bool(args.apply_ln),
-        "n_examples": len(prompts), "n_numbers": int(values.size),
+        "read_token": args.read_token, "layer": args.layer, "apply_ln": bool(args.apply_ln),
+        "b_fixed": args.b_fixed if prompts.template_has_b(args.context) else None,
+        "n_examples": len(prompt_list), "n_numbers": int(values.size),
         "value_range": [int(values[0]), int(values[-1])],
         "mlp_dominant_periods_top10": [float(p) for p in specs["mlp"]["dominant_periods"]],
         "attn_dominant_periods_top10": [float(p) for p in specs["attn"]["dominant_periods"]],
     }
-    # Folder = <model>/run_fourier_components/<context>; file only needs the layer.
-    (out / f"L{args.layer}.json").write_text(json.dumps(summary, indent=2))
-    _plot(specs, out / f"L{args.layer}.png",
-          args.model, args.layer, args.context)
+    (out / f"L{args.layer}.{args.read_token}.json").write_text(json.dumps(summary, indent=2))
+    _plot(specs, out / f"L{args.layer}.{args.read_token}.png",
+          args.model, args.layer, args.context, args.read_token)
     print(f"[done] MLP top5 periods:  {summary['mlp_dominant_periods_top10'][:5]}")
     print(f"[done] attn top5 periods: {summary['attn_dominant_periods_top10'][:5]}")
-    print(f"[done] wrote {out} (site={site}, context={args.context})")
+    print(f"[done] wrote {out} (site={site}, context={args.context}, read={args.read_token})")
 
 
-def _run_summary(model, args, prompts, token_index, values, number_ids, out):
-    """[zhou2024] Fig 3: sweep every layer, build the layer x frequency heatmap of MLP
-    and attention component-output LOGIT magnitudes, side by side."""
+def _run_summary(model, args, prompt_list, token_index, values, number_ids, out):
+    """[zhou2024] Fig 3: sweep every layer, build the layer x frequency heatmap of MLP and
+    attention component-output LOGIT magnitudes, side by side."""
     lo, hi = (args.layers if args.layers is not None else (0, model.cfg.n_layers - 1))
     if not (0 <= lo <= hi <= model.cfg.n_layers - 1):
         raise SystemExit(f"--layers {lo} {hi} out of range [0,{model.cfg.n_layers - 1}]")
     layers = list(range(lo, hi + 1))
     mlp_hooks = [f"blocks.{L}.hook_mlp_out" for L in layers]
     attn_hooks = [f"blocks.{L}.hook_attn_out" for L in layers]
-    # One forward sweep caches every layer's MLP and attn output.
-    caches = cache_number_site_all_layers(model, prompts, mlp_hooks + attn_hooks,
+    caches = cache_number_site_all_layers(model, prompt_list, mlp_hooks + attn_hooks,
                                           token_index=token_index)
     mlp_specs, attn_specs = [], []
     for L in layers:
@@ -220,15 +195,17 @@ def _run_summary(model, args, prompts, token_index, values, number_ids, out):
     attn_mat, _ = plotting.stack_power(attn_specs)
     plotting.plot_layer_freq_heatmap(
         [("MLP output", mlp_mat), ("Attention output", attn_mat)],
-        freqs, layers, args.context, out / "summary_layers.png",
+        freqs, layers, args.context, out / f"summary_layers.{args.read_token}.png",
         model=args.model, value_unit="logit", transform=args.power_transform,
         cmap=args.cmap, vmax_percentile=args.vmax_percentile,
         title=f"Component-output logits in Fourier space across layers — "
-              f"{args.model} (context={args.context})")
+              f"{args.model} — {args.context} — read={args.read_token}")
     summary = {
         "model": args.model, "site": "components.summary", "context": args.context,
-        "apply_ln": bool(args.apply_ln), "transform": args.power_transform,
-        "layers": layers, "n_examples": len(prompts), "n_numbers": int(values.size),
+        "read_token": args.read_token, "apply_ln": bool(args.apply_ln),
+        "transform": args.power_transform,
+        "b_fixed": args.b_fixed if prompts.template_has_b(args.context) else None,
+        "layers": layers, "n_examples": len(prompt_list), "n_numbers": int(values.size),
         "value_range": [int(values[0]), int(values[-1])],
         "freqs": [float(f) for f in freqs],
         "mlp_dominant_periods_by_layer": {
@@ -238,10 +215,10 @@ def _run_summary(model, args, prompts, token_index, values, number_ids, out):
             int(L): [float(p) for p in s["dominant_periods"][:5]]
             for L, s in zip(layers, attn_specs)},
     }
-    (out / "summary_layers.json").write_text(json.dumps(summary, indent=2))
+    (out / f"summary_layers.{args.read_token}.json").write_text(json.dumps(summary, indent=2))
     print(f"[done] summary heatmap over layers {lo}..{hi} "
-          f"(transform={args.power_transform})")
-    print(f"[done] wrote {out}/summary_layers.png (context={args.context})")
+          f"(transform={args.power_transform}, read={args.read_token})")
+    print(f"[done] wrote {out}/summary_layers.{args.read_token}.png (context={args.context})")
 
 
 def _annotate(ax, spec, k=6):
@@ -254,7 +231,7 @@ def _annotate(ax, spec, k=6):
                     textcoords="offset points", xytext=(0, 4), fontsize=7, ha="center")
 
 
-def _plot(specs, path, model, layer, context):
+def _plot(specs, path, model, layer, context, read_token):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -268,7 +245,7 @@ def _plot(specs, path, model, layer, context):
         ax.set_title(f"{title} — L{layer}")
     axes[0].set_ylabel("mean logit power")
     fig.suptitle(f"Component-output logits in Fourier space — {model} "
-                 f"— L{layer} (context={context})")
+                 f"— L{layer} ({context}, read={read_token})")
     fig.tight_layout()
     fig.savefig(path, dpi=130)
 
