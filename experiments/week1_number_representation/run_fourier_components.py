@@ -44,7 +44,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from n2p import config, models                       # noqa: E402
-from n2p.number_repr import fourier                    # noqa: E402
+from n2p.number_repr import fourier, plotting          # noqa: E402
 from n2p.number_repr.causal import cache_number_site_all_layers  # noqa: E402
 
 
@@ -79,8 +79,20 @@ def _logit_matrix(model, acts, number_ids, apply_ln):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="gptj")
-    ap.add_argument("--layer", type=int, required=True,
-                    help="layer L whose MLP output and attention output are analyzed")
+    ap.add_argument("--layer", type=int, default=None,
+                    help="layer L whose MLP output and attention output are analyzed "
+                         "(required unless --summary, which sweeps all layers).")
+    ap.add_argument("--summary", action="store_true",
+                    help="instead of one layer, sweep every layer and draw the "
+                         "[zhou2024] Fig 3 layer x frequency heatmap (MLP | attn side "
+                         "by side), colour = component magnitude.")
+    ap.add_argument("--layers", type=int, nargs=2, metavar=("LO", "HI"), default=None,
+                    help="--summary only: restrict to the inclusive layer band [LO,HI] "
+                         "(default: all layers; the paper used the last 15).")
+    ap.add_argument("--power-transform", choices=["amplitude", "power", "log"],
+                    default="amplitude", dest="power_transform",
+                    help="--summary colour scale: amplitude=sqrt(mean power)=||C_k|| "
+                         "(default, linear); power=raw; log=log10.")
     ap.add_argument("--lo", type=int, default=0)
     ap.add_argument("--hi", type=int, default=360)
     ap.add_argument("--context", choices=["bare", "addition"], default="bare",
@@ -99,6 +111,8 @@ def main():
                     help="fold the final LayerNorm before W_U (off by default; see header).")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
+    if not args.summary and args.layer is None:
+        ap.error("--layer is required unless --summary is set")
 
     rng = random.Random(args.seed)
     model = models.load_model(args.model)
@@ -108,9 +122,6 @@ def main():
         raise SystemExit(f"too few single-token numbers in [{args.lo},{args.hi}] for a DFT")
     number_ids = [tok_map[int(v)] for v in values]
     vset = set(int(v) for v in values)
-
-    mlp_hook = f"blocks.{args.layer}.hook_mlp_out"
-    attn_hook = f"blocks.{args.layer}.hook_attn_out"
 
     if args.context == "addition":
         # Sample single-token (a, b) with single-token answer a+b in range. We read the
@@ -137,12 +148,22 @@ def main():
         token_index = -1                               # the number token
         print(f"[context=bare] {len(prompts)} isolated number prompts")
 
-    caches = cache_number_site_all_layers(model, prompts, [mlp_hook, attn_hook],
-                                          token_index=token_index)
     out = config.run_dir("week1_number_representation", args.seed,
+                         model=args.model,
                          label=f"run_fourier_components/{args.context}",
                          meta={"script": "run_fourier_components.py",
-                               "context": args.context, "layer": args.layer})
+                               "context": args.context,
+                               "layer": args.layer if not args.summary else None,
+                               "summary": bool(args.summary)})
+
+    if args.summary:
+        _run_summary(model, args, prompts, token_index, values, number_ids, out)
+        return
+
+    mlp_hook = f"blocks.{args.layer}.hook_mlp_out"
+    attn_hook = f"blocks.{args.layer}.hook_attn_out"
+    caches = cache_number_site_all_layers(model, prompts, [mlp_hook, attn_hook],
+                                          token_index=token_index)
     specs = {}
     for name, hook in (("mlp", mlp_hook), ("attn", attn_hook)):
         logit_mat = _logit_matrix(model, caches[hook], number_ids, args.apply_ln)
@@ -157,13 +178,61 @@ def main():
         "mlp_dominant_periods_top10": [float(p) for p in specs["mlp"]["dominant_periods"]],
         "attn_dominant_periods_top10": [float(p) for p in specs["attn"]["dominant_periods"]],
     }
-    # Folder = run_fourier_components/<context>; file only needs the layer.
+    # Folder = <model>/run_fourier_components/<context>; file only needs the layer.
     (out / f"L{args.layer}.json").write_text(json.dumps(summary, indent=2))
     _plot(specs, out / f"L{args.layer}.png",
           args.model, args.layer, args.context)
     print(f"[done] MLP top5 periods:  {summary['mlp_dominant_periods_top10'][:5]}")
     print(f"[done] attn top5 periods: {summary['attn_dominant_periods_top10'][:5]}")
     print(f"[done] wrote {out} (site={site}, context={args.context})")
+
+
+def _run_summary(model, args, prompts, token_index, values, number_ids, out):
+    """[zhou2024] Fig 3: sweep every layer, build the layer x frequency heatmap of MLP
+    and attention component-output LOGIT magnitudes, side by side."""
+    lo, hi = (args.layers if args.layers is not None else (0, model.cfg.n_layers - 1))
+    if not (0 <= lo <= hi <= model.cfg.n_layers - 1):
+        raise SystemExit(f"--layers {lo} {hi} out of range [0,{model.cfg.n_layers - 1}]")
+    layers = list(range(lo, hi + 1))
+    mlp_hooks = [f"blocks.{L}.hook_mlp_out" for L in layers]
+    attn_hooks = [f"blocks.{L}.hook_attn_out" for L in layers]
+    # One forward sweep caches every layer's MLP and attn output.
+    caches = cache_number_site_all_layers(model, prompts, mlp_hooks + attn_hooks,
+                                          token_index=token_index)
+    mlp_specs, attn_specs = [], []
+    for L in layers:
+        mlp_lm = _logit_matrix(model, caches[f"blocks.{L}.hook_mlp_out"],
+                               number_ids, args.apply_ln)
+        attn_lm = _logit_matrix(model, caches[f"blocks.{L}.hook_attn_out"],
+                                number_ids, args.apply_ln)
+        mlp_specs.append(fourier.number_dft(mlp_lm, values))
+        attn_specs.append(fourier.number_dft(attn_lm, values))
+
+    mlp_mat, freqs = plotting.stack_power(mlp_specs)
+    attn_mat, _ = plotting.stack_power(attn_specs)
+    plotting.plot_layer_freq_heatmap(
+        [("MLP output", mlp_mat), ("Attention output", attn_mat)],
+        freqs, layers, args.context, out / "summary_layers.png",
+        model=args.model, value_unit="logit", transform=args.power_transform,
+        title=f"Component-output logits in Fourier space across layers — "
+              f"{args.model} (context={args.context})")
+    summary = {
+        "model": args.model, "site": "components.summary", "context": args.context,
+        "apply_ln": bool(args.apply_ln), "transform": args.power_transform,
+        "layers": layers, "n_examples": len(prompts), "n_numbers": int(values.size),
+        "value_range": [int(values[0]), int(values[-1])],
+        "freqs": [float(f) for f in freqs],
+        "mlp_dominant_periods_by_layer": {
+            int(L): [float(p) for p in s["dominant_periods"][:5]]
+            for L, s in zip(layers, mlp_specs)},
+        "attn_dominant_periods_by_layer": {
+            int(L): [float(p) for p in s["dominant_periods"][:5]]
+            for L, s in zip(layers, attn_specs)},
+    }
+    (out / "summary_layers.json").write_text(json.dumps(summary, indent=2))
+    print(f"[done] summary heatmap over layers {lo}..{hi} "
+          f"(transform={args.power_transform})")
+    print(f"[done] wrote {out}/summary_layers.png (context={args.context})")
 
 
 def _annotate(ax, spec, k=6):

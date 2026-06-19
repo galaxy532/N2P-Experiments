@@ -117,6 +117,7 @@ def main():
     }
     # Causal validation is inherently an addition-task experiment (patches a+b logits).
     out = config.run_dir("week1_number_representation", args.seed,
+                         model=args.model,
                          label="run_causal_validation/addition",
                          meta={"script": "run_causal_validation.py", "context": "addition"})
     (out / "causal_validation.json").write_text(

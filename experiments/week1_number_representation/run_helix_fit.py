@@ -83,6 +83,7 @@ def main():
         token_index = -1
 
     out = config.run_dir("week1_number_representation", args.seed,
+                         model=args.model,
                          label=f"run_helix_fit/{args.context}",
                          meta={"script": "run_helix_fit.py", "context": args.context})
     # One batched forward sweep caches resid_post at every layer at once (vs. a full

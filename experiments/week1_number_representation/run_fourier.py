@@ -19,7 +19,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from n2p import config, models                       # noqa: E402
-from n2p.number_repr import fourier                    # noqa: E402
+from n2p.number_repr import fourier, plotting          # noqa: E402
 from n2p.number_repr.causal import cache_number_site_all_layers  # noqa: E402
 
 
@@ -40,6 +40,18 @@ def main():
     ap.add_argument("--hi", type=int, default=360)
     ap.add_argument("--layer", type=int, default=None,
                     help="if set, analyze resid_post at this layer; else token embeddings")
+    ap.add_argument("--summary", action="store_true",
+                    help="sweep resid_post across all layers and draw the [zhou2024] "
+                         "Fig 3 layer x frequency heatmap (single panel; resid_post has "
+                         "no MLP/attn split). Overrides --layer. Embeddings are one "
+                         "point, so excluded from the sweep.")
+    ap.add_argument("--layers", type=int, nargs=2, metavar=("LO", "HI"), default=None,
+                    help="--summary only: restrict to the inclusive layer band [LO,HI] "
+                         "(default: all layers; the paper used the last 15).")
+    ap.add_argument("--power-transform", choices=["amplitude", "power", "log"],
+                    default="amplitude", dest="power_transform",
+                    help="--summary colour scale: amplitude=sqrt(mean power)=||C_k|| "
+                         "(default, linear); power=raw; log=log10.")
     ap.add_argument("--context", choices=["bare", "addition"], default="bare",
                     help="bare: isolated number token ' {a}'. addition: operand-a token "
                          "inside an '{a}+{b}=' prompt ([kantamneni2025] §4.3). Only applies "
@@ -65,6 +77,10 @@ def main():
                   f"{values[cut]}); dropping {len(values) - cut} value(s), using "
                   f"contiguous {values[0]}..{values[cut-1]} ({cut} numbers)")
             values = values[:cut]
+
+    if args.summary:
+        _run_summary(model, args, values)
+        return
 
     if args.layer is None:
         # Embedding matrix rows for the number tokens — context-free by construction.
@@ -92,6 +108,7 @@ def main():
 
     spec = fourier.number_dft(acts, values)
     out = config.run_dir("week1_number_representation", args.seed,
+                         model=args.model,
                          label=f"run_fourier/{ctx_tag}",
                          meta={"script": "run_fourier.py", "context": ctx_tag, "site": site})
     summary = {
@@ -107,6 +124,55 @@ def main():
     _plot(spec, out / f"{site}.png", args.model, site, ctx_tag)
     print(f"[done] dominant periods (top 5): {summary['dominant_periods_top10'][:5]}")
     print(f"[done] wrote {out} (site={site}, context={ctx_tag})")
+
+
+def _run_summary(model, args, values):
+    """[zhou2024] Fig 3 for the residual stream: sweep resid_post across layers and draw
+    a single layer x frequency heatmap (resid_post has no MLP/attn split)."""
+    if args.context == "addition":
+        prompts = [f"{int(v)}+{args.b_fixed}=" for v in values]
+        token_index = _operand_a_index(model, prompts[0])
+        print(f"[context=addition] b={args.b_fixed}; operand-a token index={token_index}")
+    else:
+        prompts = [f" {int(v)}" for v in values]
+        token_index = -1
+        print(f"[context=bare] {len(prompts)} isolated number prompts")
+
+    lo, hi = (args.layers if args.layers is not None else (0, model.cfg.n_layers - 1))
+    if not (0 <= lo <= hi <= model.cfg.n_layers - 1):
+        raise SystemExit(f"--layers {lo} {hi} out of range [0,{model.cfg.n_layers - 1}]")
+    layers = list(range(lo, hi + 1))
+    hooks = [f"blocks.{L}.hook_resid_post" for L in layers]
+    caches = cache_number_site_all_layers(model, prompts, hooks, token_index=token_index)
+    specs = [fourier.number_dft(caches[f"blocks.{L}.hook_resid_post"], values)
+             for L in layers]
+    mat, freqs = plotting.stack_power(specs)
+
+    out = config.run_dir("week1_number_representation", args.seed,
+                         model=args.model,
+                         label=f"run_fourier/{args.context}",
+                         meta={"script": "run_fourier.py", "context": args.context,
+                               "site": "resid_post.summary", "summary": True})
+    plotting.plot_layer_freq_heatmap(
+        [("resid_post", mat)], freqs, layers, args.context,
+        out / "summary_resid_post.png", model=args.model, value_unit="activation",
+        transform=args.power_transform,
+        title=f"Residual-stream Fourier components across layers — {args.model} "
+              f"(context={args.context})")
+    summary = {
+        "model": args.model, "site": "resid_post.summary", "context": args.context,
+        "transform": args.power_transform, "layers": layers,
+        "n_numbers": int(values.size),
+        "value_range": [int(values[0]), int(values[-1])],
+        "freqs": [float(f) for f in freqs],
+        "dominant_periods_by_layer": {
+            int(L): [float(p) for p in s["dominant_periods"][:5]]
+            for L, s in zip(layers, specs)},
+    }
+    (out / "summary_resid_post.json").write_text(json.dumps(summary, indent=2))
+    print(f"[done] summary heatmap over layers {lo}..{hi} "
+          f"(transform={args.power_transform})")
+    print(f"[done] wrote {out}/summary_resid_post.png (context={args.context})")
 
 
 def _plot(spec, path, model, site, context):

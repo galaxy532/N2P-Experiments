@@ -87,7 +87,7 @@ def main():
             print(f"{tname:16s} {fname:12s} acc={res['first_token_acc']:.3f} "
                   f"(single-tok answers {res['frac_single_token_answers']:.2f})")
 
-    out = config.run_dir("week1_accuracy_probe", args.seed)
+    out = config.run_dir("week1_accuracy_probe", args.seed, model=args.model)
     summary = {"model": args.model, "kshot": args.kshot, "n": args.n, "rows": rows}
     (out / "accuracy.json").write_text(json.dumps(summary, indent=2))
     _write_table(rows, out / "accuracy_table.md", args.model, args.kshot)

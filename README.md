@@ -98,11 +98,13 @@ N2P-Experiments/
 │       ├── README.md
 │       └── run_greaterthan.py
 ├── results/                   # outputs (gitignored except manifests)
-│   └── <exp>/<script>/<context>/   # human-readable: one folder per script, sub-folder
+│   └── <exp>/<model>/<script>/<context>/  # human-readable: grouped by MODEL (GPT-J /
+│                                   # Llama-3-8B), then one folder per script, sub-folder
 │                                   # per context; files carry only what the path doesn't
-│                                   # (layer/site). run_meta.json holds date/sha/seed/cmd.
-│       # e.g. week1_number_representation/run_fourier/bare/resid_post.L16.png
-│       #      week1_number_representation/run_fourier_components/addition/L33.png
+│                                   # (layer/site). run_meta.json holds date/sha/seed/model/cmd.
+│       # e.g. week1_number_representation/GPT-J/run_fourier/bare/resid_post.L16.png
+│       #      week1_number_representation/GPT-J/run_fourier_components/addition/L33.png
+│       #      week1_number_representation/GPT-J/run_fourier_components/addition/summary_layers.png
 └── logs/
     └── runlog.md              # APPEND ONE LINE PER RUN (mirrors wiki/log.md style)
 ```
@@ -111,10 +113,13 @@ N2P-Experiments/
 
 - **Determinism:** every run takes a `--seed` (default 0).
 - **Output layout (human-readable):** outputs go to
-  `results/<exp>/<script>/<context>/` — **one folder per script, a sub-folder per
-  context** (`bare` / `addition`). File names inside carry only what the path does not
-  already say (the layer/site, e.g. `resid_post.L16.png`, `L33.png`). Build the path via
-  `config.run_dir(exp, seed, label="run_fourier/bare", meta={...})`.
+  `results/<exp>/<model>/<script>/<context>/` — **grouped by model** (`GPT-J` /
+  `Llama-3-8B`, from `config.model_dir_name`), then **one folder per script, a sub-folder
+  per context** (`bare` / `addition`). File names inside carry only what the path does not
+  already say (the layer/site, e.g. `resid_post.L16.png`, `L33.png`; the across-layers
+  summary is `summary_layers.png` / `summary_resid_post.png`). Build the path via
+  `config.run_dir(exp, seed, model="gptj", label="run_fourier/bare", meta={...})` — pass
+  `model=` to get the per-model grouping (omit it for the legacy un-grouped path).
 - **Provenance, not immutable dirs.** Re-running a `(script, context)` **overwrites in
   place**; the exact `date`, `git_sha`, `seed` and command line are recorded in
   `run_meta.json` in that folder (plus any `meta=` fields). This replaces the old
@@ -144,6 +149,11 @@ python3 experiments/week1_number_representation/run_helix_fit.py --model gptj   
 python3 experiments/week1_number_representation/run_fourier.py --model gptj             # embeddings; add --layer N for resid_post, --context {bare,addition}
 python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --layer 16      # MLP/attn-output LOGIT spectra; --context {bare,addition}
 python3 experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --layer 16  # MLP/attn-output ACTIVATION spectra; --context {bare,addition}
+# across-layers summary (zhou2024 Fig 3): layer x frequency heatmap, colour = component
+# magnitude. --summary sweeps all layers (--layers LO HI to restrict; --power-transform
+# {amplitude,power,log}, default amplitude=sqrt(power)=||C_k||). --context {bare,addition}.
+python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --summary --context addition  # MLP|attn side by side
+python3 experiments/week1_number_representation/run_fourier.py --model gptj --summary                                 # resid_post sweep, single panel
 python3 experiments/week1_number_representation/run_causal_validation.py --model gptj
 python3 experiments/week1_circuit_sanity/run_discovery_sanity.py --target tracr  # needs Edge-Pruning repo
 ```

@@ -27,7 +27,10 @@ python experiments/week1_number_representation/run_fourier.py          --model g
 python experiments/week1_number_representation/run_fourier.py          --model gptj --layer 16       # resid_post; --context {bare,addition}
 python experiments/week1_number_representation/run_fourier_components.py     --model gptj --layer 16      # MLP/attn output LOGITS, side by side; --context {bare,addition}
 python experiments/week1_number_representation/run_fourier_components.py     --model gptj --layer 33 --context addition  # canonical Fig 2/3 (answer-token site)
+python experiments/week1_number_representation/run_fourier_components.py     --model gptj --summary --context addition   # Fig 3 across-layers heatmap (MLP|attn)
 python experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --layer 16      # MLP/attn output ACTIVATIONS, side by side; --context {bare,addition}
+python experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --summary       # Fig 3 across-layers heatmap (activation space)
+python experiments/week1_number_representation/run_fourier.py               --model gptj --summary       # resid_post across-layers heatmap (single panel)
 python experiments/week1_number_representation/run_causal_validation.py --model gptj
 # then repeat with --model llama3-8b (confirm build_layers in config.py from the helix sweep)
 ```
@@ -38,20 +41,37 @@ leak (dominant periods read ~10.03 instead of 10.0). For exact bin alignment use
 sample points** — `--lo 1 --hi 360` or `--lo 0 --hi 359`. Default left at 360.
 
 ## Outputs (where each run lands)
-One folder per script, a sub-folder per context; file names carry only the layer/site.
+Grouped by **model** (`GPT-J` / `Llama-3-8B`), then one folder per script, a sub-folder
+per context; file names carry only the layer/site.
 
 ```
-results/week1_number_representation/
+results/week1_number_representation/<model>/
 ├── run_helix_fit/{bare,addition}/             summary.json, helix_r2_by_layer.png
 ├── run_fourier/{bare,addition}/               embedding.png|json, resid_post.L<n>.png|json
+│                                              summary_resid_post.png|json   (--summary)
 ├── run_fourier_components/{bare,addition}/     L<n>.png|json   (logit-lens, MLP|attn panels)
+│                                              summary_layers.png|json       (--summary)
 ├── run_fourier_components_raw/{bare,addition}/ L<n>.png|json   (raw activations)
+│                                              summary_layers.png|json       (--summary)
 └── run_causal_validation/addition/            causal_validation.json
 ```
+`<model>` is `GPT-J` for `--model gptj`, `Llama-3-8B` for `--model llama3-8b`
+(`config.model_dir_name`).
 
-Each folder also has a `run_meta.json` (date, git sha, seed, exact command). Re-running a
-`(script, context)` overwrites in place — provenance lives in `run_meta.json`, not the
-folder name.
+Each folder also has a `run_meta.json` (date, git sha, seed, model, exact command).
+Re-running a `(script, context)` overwrites in place — provenance lives in
+`run_meta.json`, not the folder name.
+
+## Across-layers summary (`--summary`, [zhou2024] Fig 3)
+The three Fourier scripts also produce the Figure-3 summary: **x = layer index, y =
+frequency, colour = component magnitude** across all layers (use `--layers LO HI` to
+restrict; the paper used the last 15). The two `*_components*` scripts draw **MLP | attn
+side by side**; `run_fourier.py --summary` sweeps `resid_post` (single panel — no
+MLP/attn split; embeddings are excluded as a single point). `--context {bare,addition}`
+selects the framing, as for the per-layer plots. Colour defaults to
+`--power-transform amplitude` = `sqrt(mean power)` = `||C_k||` (per-dim RMS amplitude /
+L2 norm of the frequency-k coefficient vector, linear scale); `power` and `log` are also
+available. Outlier components are expected at periods ~2, 2.5, 5, 10.
 
 ## What each result feeds downstream
 - The **build layer** found by `run_helix_fit` → the site where week-2 SAEs are trained.
