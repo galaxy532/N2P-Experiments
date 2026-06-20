@@ -11,8 +11,8 @@ note "Model preparation"); greedy next-token; score by whether the top token mat
 the FIRST token of the gold answer (exact for single-token answers; first-token
 approximation otherwise — reported separately).
 
-    python experiments/week1_accuracy_probe/run_accuracy_probe.py --model gptj
-    python experiments/week1_accuracy_probe/run_accuracy_probe.py --model gptj --kshot 4 --n 100
+    python3 experiments/week1_accuracy_probe/run_accuracy_probe.py --model gptj
+    python3 experiments/week1_accuracy_probe/run_accuracy_probe.py --model gptj --kshot 4 --n 100
 
 Output: results/week1_accuracy_probe/<run_id>/accuracy.json + a task×framing table.
 This is a behavioral probe (no activations cached) so it is cheap to run first.
