@@ -79,13 +79,16 @@ N2P-Experiments/
 ├── src/n2p/
 │   ├── config.py              # paths, model registry, device, cache location
 │   ├── models.py              # load models via TransformerLens (HookedTransformer)
-│   ├── tasks.py               # TASK REGISTRY: prompts/framings (under discussion)
+│   ├── tasks.py               # TASK REGISTRY + the SINGLE framing source: 3 framings
+│   │                          #   (symbolic / word / wordproblem) per operation, plus
+│   │                          #   prompt build + read-token selection (was prompts.py)
 │   ├── number_repr/
-│   │   ├── helix.py           # generalized-helix basis + fit [kantamneni2025]
+│   │   ├── helix.py           # generalized-helix basis + fit + helix-subspace basis [kantamneni2025]
 │   │   ├── fourier.py         # DFT / Fourier-feature analysis [zhou2024]
-│   │   ├── prompts.py         # prompt TEMPLATES (template_1..4) + read-token selection
 │   │   ├── plotting.py        # layer x frequency summary heatmaps [zhou2024 Fig 3]
-│   │   └── causal.py          # subspace patch + average-ablate-rest [engels2024]
+│   │   ├── repcli.py          # shared CLI/plot helpers for the 4 representation scripts
+│   │   └── causal.py          # subspace patch + average-ablate-rest [engels2024];
+│   │                          #   total/direct-effect (TE/DE) path patching [kantamneni2025 Fig 6]
 │   └── circuits/
 │       └── discovery.py       # Edge Pruning + Tracr ground truth (ACDC NOT used)
 ├── experiments/
@@ -95,19 +98,22 @@ N2P-Experiments/
 │   │   ├── run_fourier.py                # DFT of resid_post / embeddings (activation space)
 │   │   ├── run_fourier_components.py     # DFT of MLP/attn output LOGITS [zhou2024 Fig 2-3]
 │   │   ├── run_fourier_components_raw.py # DFT of MLP/attn output ACTIVATIONS (SAE-relevant)
-│   │   └── run_causal_validation.py
+│   │   ├── run_causal_validation.py      # helix full/magnitude/modular + PCA baseline vs full-layer
+│   │   └── run_te_de_probe.py            # TE/DE write-site localization [kantamneni2025 Fig 6]
 │   └── week1_circuit_sanity/
 │       ├── README.md
 │       └── run_greaterthan.py
 ├── results/                   # outputs (gitignored except manifests)
-│   └── <exp>/<model>/<script>/<template>/  # human-readable: grouped by MODEL (GPT-J /
+│   └── <exp>/<model>/<script>/<operation>/  # human-readable: grouped by MODEL (GPT-J /
 │                                   # Llama-3-8B), then one folder per script, sub-folder
-│                                   # per prompt TEMPLATE; files carry the layer/site and
-│                                   # the read-token. run_meta.json holds
-│                                   # date/sha/seed/model/context/read_token/cmd.
-│       # e.g. week1_number_representation/GPT-J/run_fourier/template_1/resid_post.L16.a.png
-│       #      week1_number_representation/GPT-J/run_fourier_components/template_3/L16.sum.png
-│       #      week1_number_representation/GPT-J/run_fourier_components/template_3/summary_layers.sum.png
+│                                   # per OPERATION (addition, multiplication, ...); files
+│                                   # carry the layer/site, FRAMING, and read-token.
+│                                   # run_meta.json holds date/sha/seed/model/operation/
+│                                   # framing/read_token/cmd.
+│       # e.g. week1_number_representation/GPT-J/run_fourier/addition/resid_post.L16.symbolic.a.png
+│       #      week1_number_representation/GPT-J/run_fourier_components/addition/L16.symbolic.sum.png
+│       #      week1_number_representation/GPT-J/run_fourier_components/addition/summary_MLP.sum.png
+│       #      week1_number_representation/GPT-J/run_fourier_components/addition/summary_Attn.sum.png
 └── logs/
     └── runlog.md              # APPEND ONE LINE PER RUN (mirrors wiki/log.md style)
 ```
@@ -116,15 +122,17 @@ N2P-Experiments/
 
 - **Determinism:** every run takes a `--seed` (default 0).
 - **Output layout (human-readable):** outputs go to
-  `results/<exp>/<model>/<script>/<template>/` — **grouped by model** (`GPT-J` /
+  `results/<exp>/<model>/<script>/<operation>/` — **grouped by model** (`GPT-J` /
   `Llama-3-8B`, from `config.model_dir_name`), then **one folder per script, a sub-folder
-  per prompt template** (`template_1`..`template_4`, see `src/n2p/number_repr/prompts.py`).
-  File names carry the layer/site **and the read-token** (the path doesn't say those):
-  e.g. `resid_post.L16.a.png`, `L16.sum.png`; the across-layers summary is
-  `summary_layers.<read_token>.png` / `summary_resid_post.<read_token>.png`. Build the path
-  via `config.run_dir(exp, seed, model="gptj", label="run_fourier/template_1", meta={...})`
+  per operation** (`addition`, `subtraction`, `multiplication`, ... — the `--operation`,
+  whose 3 framings symbolic/word/wordproblem live in `src/n2p/tasks.py`). File names carry
+  the layer/site, the **framing**, and the **read-token** (the path doesn't say those):
+  e.g. `resid_post.L16.symbolic.a.png`, `L16.symbolic.sum.png`. The across-layers summary
+  draws **one panel per framing**: `summary_MLP.<read_token>.png` + `summary_Attn.<read_token>.png`
+  for the component scripts, `summary_resid_post.<read_token>.png` for `run_fourier`. Build
+  the path via `config.run_dir(exp, seed, model="gptj", label="run_fourier/addition", meta={...})`
   — pass `model=` to get the per-model grouping (omit it for the legacy un-grouped path).
-- **Provenance, not immutable dirs.** Re-running a `(script, context)` **overwrites in
+- **Provenance, not immutable dirs.** Re-running a `(script, operation)` **overwrites in
   place**; the exact `date`, `git_sha`, `seed` and command line are recorded in
   `run_meta.json` in that folder (plus any `meta=` fields). This replaces the old
   immutable `<date>-<sha>-s<seed>` run-id dirs — readability over per-run archival. For a
@@ -149,20 +157,21 @@ bash setup/setup_paperspace.sh          # wires HF cache to ../hf_cache (beside 
 python3 setup/download_models.py          # caches GPT-J + Llama-3-8B to ../hf_cache
 
 # week 1:
-python3 experiments/week1_number_representation/run_helix_fit.py --model gptj          # --hi default 99; --context template_1..4, --read-token {a,b,sum}
-python3 experiments/week1_number_representation/run_fourier.py --model gptj             # embeddings; add --layer N for resid_post, --context template_*, --read-token *
-python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --layer 16 --context template_3      # MLP/attn-output LOGIT spectra (read sum)
-python3 experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --layer 16 --context template_3  # MLP/attn-output ACTIVATION spectra (read a)
-# Prompt framing is --context template_1.." {a}" / template_2 "The number {a}" /
-# template_3 "What is the sum of {a} and {b}? Answer:" / template_4 "Compute {a} + {b} =".
+python3 experiments/week1_number_representation/run_helix_fit.py --model gptj          # --hi default 99; --operation addition (3 framings as panels), --read-token {a,b,sum}
+python3 experiments/week1_number_representation/run_fourier.py --model gptj             # embeddings; add --layer N for resid_post, --operation OP --framing F, --read-token *
+python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --layer 16 --operation addition --framing symbolic      # MLP/attn-output LOGIT spectra (read sum)
+python3 experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --layer 16 --operation addition --framing symbolic  # MLP/attn-output ACTIVATION spectra (read a)
+# Surface form is --operation {addition,subtraction,multiplication,mult_const,int_division,
+# modular} x --framing {symbolic,word,wordproblem}: symbolic "Compute {a} + {b} =" (context
+# BEFORE the operand) / word "{a} plus {b} equals" / wordproblem "I have {a} apples ...".
 # --read-token {a,b,sum} picks the position (a/b operands, sum=last token); b is fixed
-# (--b_fixed). See src/n2p/number_repr/prompts.py.
-# across-layers summary (zhou2024 Fig 3): layer x frequency heatmap, colour = component
-# magnitude. --summary sweeps all layers (--layers LO HI to restrict; --power-transform
+# (--b_fixed). See src/n2p/tasks.py (FRAMINGS). The bare-number template is dropped.
+# across-layers summary (zhou2024 Fig 3): layer x frequency heatmap, ONE PANEL PER FRAMING.
+# --summary sweeps all layers (--layers LO HI to restrict; --power-transform
 # {amplitude,power,log} default amplitude=sqrt(power)=||C_k||; --cmap, --vmax-percentile).
-python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --summary --context template_3 --read-token sum  # MLP|attn side by side
-python3 experiments/week1_number_representation/run_fourier.py --model gptj --summary --context template_3 --read-token a               # resid_post sweep, single panel
-python3 experiments/week1_number_representation/run_causal_validation.py --model gptj
+python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --summary --operation addition --read-token sum  # -> summary_MLP + summary_Attn
+python3 experiments/week1_number_representation/run_fourier.py --model gptj --summary --operation addition --read-token a               # -> summary_resid_post (panel per framing)
+python3 experiments/week1_number_representation/run_causal_validation.py --model gptj  # helix full/magnitude/modular + PCA-9/27 baseline vs full-layer ceiling
 python3 experiments/week1_circuit_sanity/run_discovery_sanity.py --target tracr  # needs Edge-Pruning repo
 ```
 

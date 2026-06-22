@@ -123,8 +123,117 @@ def full_layer_patch_logit_diff(model, clean_prompt, corrupt_prompt, hook_name,
     return float(last[ap_id] - last[a_id])
 
 
-def orthonormalize(C: np.ndarray) -> np.ndarray:
-    """Columns of the fitted helix map C live in PCA space; turn an arbitrary basis
-    into an orthonormal one (QR) so the patch writes into a clean subspace."""
-    Q, _ = np.linalg.qr(C)
-    return Q
+# =====================================================================================
+# Total / direct / indirect effect (activation vs path patching)
+# -------------------------------------------------------------------------------------
+# Implements the [kantamneni2025] Fig-6 decomposition (canonical defs in the wiki concept
+# ablation-and-patching.md). A *denoising* setup: base run = CORRUPT prompt, the sender is
+# patched to its CLEAN value.
+#   total_effect  : patch sender->clean, let all downstream components RECOMPUTE freely.
+#   direct_effect : patch sender->clean, FREEZE every other component output to its CORRUPT
+#                   (base) value so only the sender's direct residual->logits path moves.
+#   indirect_effect = total - direct.
+# `sender_basis` (d_model, k) optionally restricts the swap to a subspace (e.g. an SAE /
+# helix direction) — the N2P "replace along a direction, not the whole node" granularity
+# (see approach-decision-circuit-identification.md). Scope: last-token (answer) analysis,
+# patching at `token_index`; this matches the Fig-6 use. GPU-untested (no model offline).
+# =====================================================================================
+
+def component_output_hooks(model):
+    """All per-component output hooks (attn_out + mlp_out) for every layer, forward order.
+    These are the nodes frozen for a direct-effect (path-patching) measurement."""
+    names = []
+    for L in range(model.cfg.n_layers):
+        names.append(f"blocks.{L}.hook_attn_out")
+        names.append(f"blocks.{L}.hook_mlp_out")
+    return names
+
+
+def _cache_at(model, prompt, hook_names, token_index):
+    """Cache the listed hooks at `token_index` on one prompt -> {hook: (d_model,) tensor}."""
+    nameset = set(hook_names)
+    toks = model.to_tokens(prompt)
+    _, cache = model.run_with_cache(toks, names_filter=lambda n: n in nameset)
+    return {h: cache[h][0, token_index] for h in hook_names}
+
+
+def _swap_value(cur, clean_val, basis):
+    """New value to write at the patched position. cur: (batch, d_model); clean_val:
+    (d_model,). basis None -> full swap to clean; else swap only the projection onto
+    span(basis): cur + (clean-cur) projected into the subspace."""
+    if basis is None:
+        return clean_val
+    U = torch.as_tensor(basis, dtype=cur.dtype, device=cur.device)   # (d, k)
+    delta = clean_val.unsqueeze(0) - cur                              # (b, d)
+    proj = (delta @ U) @ U.t()                                       # (b, d)
+    return cur + proj
+
+
+@torch.no_grad()
+def total_effect_logit_diff(model, clean_prompt, corrupt_prompt, sender_hook,
+                            answer_tokens, token_index=-1, sender_basis=None):
+    """TOTAL effect of `sender_hook`: patch it to its clean value on the corrupt run and
+    let the rest of the network recompute. Returns logit[ap]-logit[a] (answer_tokens =
+    (a_id, ap_id) = (corrupt-answer, clean-answer))."""
+    clean_val = _cache_at(model, clean_prompt, [sender_hook], token_index)[sender_hook]
+
+    def hook(act, hook):
+        act[:, token_index, :] = _swap_value(act[:, token_index, :], clean_val, sender_basis)
+        return act
+
+    toks = model.to_tokens(corrupt_prompt)
+    logits = model.run_with_hooks(toks, fwd_hooks=[(sender_hook, hook)])
+    last = logits[0, -1]
+    a_id, ap_id = answer_tokens
+    return float(last[ap_id] - last[a_id])
+
+
+@torch.no_grad()
+def direct_effect_logit_diff(model, clean_prompt, corrupt_prompt, sender_hook,
+                             answer_tokens, frozen_hooks=None, token_index=-1,
+                             sender_basis=None):
+    """DIRECT effect of `sender_hook` (path patching): patch it to clean while FREEZING
+    every hook in `frozen_hooks` (default: all component outputs except the sender) to its
+    CORRUPT (base) value, so the sender only reaches the logits via the direct residual
+    path. Same return convention as total_effect_logit_diff. IE = TE - DE."""
+    if frozen_hooks is None:
+        frozen_hooks = component_output_hooks(model)
+    frozen = [h for h in frozen_hooks if h != sender_hook]
+    clean_val = _cache_at(model, clean_prompt, [sender_hook], token_index)[sender_hook]
+    corrupt_vals = _cache_at(model, corrupt_prompt, frozen, token_index)
+
+    fwd_hooks = []
+
+    def sender_fn(act, hook):
+        act[:, token_index, :] = _swap_value(act[:, token_index, :], clean_val, sender_basis)
+        return act
+
+    fwd_hooks.append((sender_hook, sender_fn))
+
+    def _freeze(value):
+        def fn(act, hook):
+            act[:, token_index, :] = value
+            return act
+        return fn
+
+    for h, v in corrupt_vals.items():
+        fwd_hooks.append((h, _freeze(v)))
+
+    toks = model.to_tokens(corrupt_prompt)
+    logits = model.run_with_hooks(toks, fwd_hooks=fwd_hooks)
+    last = logits[0, -1]
+    a_id, ap_id = answer_tokens
+    return float(last[ap_id] - last[a_id])
+
+
+@torch.no_grad()
+def te_de_ie(model, clean_prompt, corrupt_prompt, sender_hook, answer_tokens,
+             frozen_hooks=None, token_index=-1, sender_basis=None):
+    """Convenience: return {'te','de','ie','de_over_te'} for one sender. `sender_basis`
+    restricts the intervention to an SAE/helix subspace (direction-level DE/TE)."""
+    te = total_effect_logit_diff(model, clean_prompt, corrupt_prompt, sender_hook,
+                                 answer_tokens, token_index, sender_basis)
+    de = direct_effect_logit_diff(model, clean_prompt, corrupt_prompt, sender_hook,
+                                  answer_tokens, frozen_hooks, token_index, sender_basis)
+    return {"te": te, "de": de, "ie": te - de,
+            "de_over_te": (de / te) if abs(te) > 1e-9 else float("nan")}

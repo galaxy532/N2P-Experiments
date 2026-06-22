@@ -94,6 +94,75 @@ def helix_coords(values, fitres) -> np.ndarray:
     return X @ fitres["C"]
 
 
+def _design_row_indices(all_periods, periods, include_linear: bool,
+                        include_intercept: bool) -> list[int]:
+    """Indices into the design matrix (`_design_matrix`: [linear, cos T1, sin T1, ...,
+    cos Tk, sin Tk, intercept]) for the requested helix components. The intercept (last
+    column) is the DC term — include it so the patch reproduces the FULL helix
+    reconstruction mu + helix_coords(a')@P (it is constant in `a`, but it sets the
+    absolute level the model expects); group it with the magnitude/low-freq part."""
+    idx = []
+    if include_linear:
+        idx.append(0)                       # linear magnitude term
+    for i, T in enumerate(all_periods):
+        if periods is None or T in periods:
+            idx += [1 + 2 * i, 2 + 2 * i]   # (cos, sin) for period T
+    if include_intercept:
+        idx.append(1 + 2 * len(all_periods))  # intercept (DC) = last design column
+    return idx
+
+
+def helix_subspace_basis(fitres, periods=None, include_linear: bool = True,
+                         include_intercept: bool = True, rtol: float = 1e-6) -> np.ndarray:
+    """Orthonormal basis (d_model, r) of the HELIX IMAGE in residual-stream space.
+
+    `periods` selects which periodic components span the subspace (None = all fitted
+    periods); `include_linear` toggles the linear magnitude term. This lets the caller
+    patch only part of the helix — e.g. the MAGNITUDE part (include_linear=True,
+    periods=(100,) — low frequency) vs the MODULAR part (include_linear=False,
+    periods=(2,5,10) — high frequency), the separable split the stub story relies on
+    [zhou2024 Table 1].
+
+    The fit lives in PCA coordinates: for value v the helix predicts the PCA coords
+    helix_coords(v) = X(v) @ C; lifted back to the residual stream these are
+    helix_coords(v) @ P, with P = pca.components_ (n_pca, d_model). Every vector the
+    helix can ever produce therefore lies in the span of the columns of
+    (C @ P).T = P.T @ C.T; we orthonormalize them so a causal patch writes ONLY inside
+    the helix subspace, not the full top-n_pca PCA subspace.
+
+    Note: when the helix image fills the top-n_pca PCA subspace (rank(C) == n_pca AND
+    every basis function is well-identified over the value range) this subspace
+    COINCIDES with the old `components.T` basis, so patching is numerically identical.
+    It diverges in two cases — both desirable: (1) n_pca exceeds the helix rank (the
+    PCA subspace carries non-helix capacity we must NOT patch), and (2) a periodic basis
+    function is near-degenerate over the sampled range (e.g. T=100 barely completes one
+    period over a in [0,99], so its direction is collinear with the linear term and
+    poorly identified). `rtol` drops those ill-conditioned directions so the patch only
+    writes into genuinely helix-spanned directions. The dropped rank is reported by the
+    caller; if it is far below 1 + 2*len(periods), reconsider the period set vs range
+    (cf. the [zhou2024]/[kantamneni2025] §4.1 range-sensitivity caveat).
+    """
+    P = fitres["pca"].components_            # (n_pca, d_model), orthonormal rows
+    C = fitres["C"]                          # (design_dim, n_pca)
+    rows = _design_row_indices(fitres["periods"], periods, include_linear, include_intercept)
+    M = P.T @ C[rows].T                      # (d_model, len(rows)): selected helix directions
+    # SVD (rank-revealing) so degenerate directions — e.g. sin(2*pi*a/2)==0 over integers —
+    # are ordered LAST and dropped cleanly. (Plain QR can place a zero pivot mid-diagonal,
+    # which would keep a garbage column and drop a real helix direction.)
+    U, s, _ = np.linalg.svd(M, full_matrices=False)
+    rank = int((s > rtol * s.max()).sum()) if s.size else 0  # helix effective rank
+    return U[:, :rank]
+
+
+def helix_target_in_basis(values, fitres, basis: np.ndarray) -> np.ndarray:
+    """Coordinates, in `basis` (the d_model x r matrix from `helix_subspace_basis`), of
+    the helix prediction for `values`. Feed straight to `subspace_patch_logit_diff` as
+    the clean target. Shape (len(values), r)."""
+    P = fitres["pca"].components_                       # (n_pca, d_model)
+    delta = helix_coords(values, fitres) @ P            # (len(values), d_model) helix offset
+    return delta @ basis                                # (len(values), r)
+
+
 def baseline_pca_r2(acts: np.ndarray, values: np.ndarray, n_pca: int = 9,
                     periods=DEFAULT_PERIODS) -> float:
     """Matched-capacity control, following [kantamneni2025] §4.4 exactly: a polynomial

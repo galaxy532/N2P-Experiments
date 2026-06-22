@@ -1,29 +1,20 @@
 """Week 1 — component-output Fourier check in ACTIVATION space [zhou2024 §4.1 idea].
 
 The activation-space sibling of run_fourier_components.py. Same layout (MLP output and
-attention output of one layer, plotted SIDE BY SIDE), but it DFTs the RAW component
-outputs instead of their logit-lens projection.
+attention output of one layer), but it DFTs the RAW component outputs instead of their
+logit-lens projection — the object closest to what week-2 SAEs ingest.
 
-Two different questions (see fourier-experiments-week1-results.md):
-  - run_fourier_components.py  (LOGIT space):  which residue class does this component
-    PROMOTE?  -> DFT over the candidate-ANSWER axis (via W_U), read at the sum token.
-  - run_fourier_components_raw.py (ACTIVATION space, here): is this component's OUTPUT
-    REPRESENTATION sparse in frequency over the INPUT number? -> DFT the d-dim activation
-    vectors over the input-number sweep, power averaged over dims. This is the object
-    closest to what week-2 SAEs ingest (SAEs train on these raw outputs, not on logits).
-
-A raw activation has no number axis inside it, so the axis comes from SWEEPING the operand
-`a`. Prompt framing is --context (template_1..4, see n2p.number_repr.prompts) and the read
-position is --read-token {a,b,sum}; `b` is FIXED (`--b_fixed`).
+Prompt surface form: --operation + --framing (symbolic / word / wordproblem, n2p.tasks).
+Operand `a` is swept, `b` FIXED (--b_fixed). --summary sweeps every layer and draws the
+Fig-3 layer x frequency heatmap with ONE PANEL PER FRAMING, as TWO files
+(summary_MLP.<tok>.png and summary_Attn.<tok>.png).
 
     export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-    python3 experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --layer 16
-    python3 experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --layer 16 --context template_3 --read-token a
-    python3 experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --summary --context template_3
+    python3 experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --layer 16 --operation addition --framing symbolic --read-token a
+    python3 experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --summary --operation addition --read-token a
 
-NOTE on --hi 360: with --lo 0 inclusive, 0..360 is 361 points (prime), so periods
-2/2.5/5/10 do not land on DFT bins and read slightly off (e.g. 10.03); cosmetic only.
-Use --lo 1 --hi 360 or --lo 0 --hi 359 for exact-integer periods. Default kept at 360.
+NOTE on --hi 360: 0..360 is 361 points (prime) -> periods read slightly off; use
+--lo 1 --hi 360 for exact bins. Default kept at 360.
 """
 import argparse
 import json
@@ -33,186 +24,136 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-from n2p import config, models                       # noqa: E402
-from n2p.number_repr import fourier, plotting, prompts  # noqa: E402
+from n2p import config, models, tasks                 # noqa: E402
+from n2p.number_repr import fourier, plotting, repcli   # noqa: E402
 from n2p.number_repr.causal import cache_number_site_all_layers  # noqa: E402
-
-
-def _contiguous_prefix(values):
-    """Keep the contiguous integer prefix (the DFT assumes an even grid). Warn on gaps."""
-    values = np.array(sorted(values))
-    if values.size:
-        gaps = np.where(np.diff(values) != 1)[0]
-        if gaps.size:
-            cut = int(gaps[0]) + 1
-            print(f"[warn] gap after {values[cut-1]} (next single-token value is "
-                  f"{values[cut]}); dropping {len(values) - cut} value(s), using "
-                  f"contiguous {values[0]}..{values[cut-1]} ({cut} numbers)")
-            values = values[:cut]
-    return values
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="gptj")
     ap.add_argument("--layer", type=int, default=None,
-                    help="layer L whose MLP output and attention output are analyzed "
-                         "(required unless --summary, which sweeps all layers).")
-    ap.add_argument("--summary", action="store_true",
-                    help="instead of one layer, sweep every layer and draw the "
-                         "[zhou2024] Fig 3 layer x frequency heatmap (MLP | attn side "
-                         "by side) in ACTIVATION space, colour = component magnitude.")
-    ap.add_argument("--layers", type=int, nargs=2, metavar=("LO", "HI"), default=None,
-                    help="--summary only: restrict to the inclusive layer band [LO,HI] "
-                         "(default: all layers; the paper used the last 15).")
-    ap.add_argument("--power-transform", choices=["amplitude", "power", "log"],
-                    default="amplitude", dest="power_transform",
-                    help="--summary colour scale: amplitude=sqrt(mean power)=||C_k|| "
-                         "(default, linear); power=raw; log=log10.")
-    ap.add_argument("--cmap", default="inferno_r",
-                    help="--summary colormap (default inferno_r, light background so "
-                         "near-zero cells read light, not black).")
-    ap.add_argument("--vmax-percentile", type=float, default=99.5,
-                    dest="vmax_percentile",
-                    help="--summary robust colour-limit percentile (default 99.5 so a "
-                         "single low-freq spike doesn't wash out the rest; 100=true max).")
+                    help="layer L whose MLP and attention outputs are analyzed "
+                         "(required unless --summary).")
+    repcli.add_summary_args(ap)
     ap.add_argument("--lo", type=int, default=0)
     ap.add_argument("--hi", type=int, default=360)
-    ap.add_argument("--context", choices=prompts.TEMPLATE_CHOICES, default="template_1",
-                    help="prompt framing (see n2p.number_repr.prompts). template_1 is the "
-                         "bare operand baseline; template_3/4 put addition context before a.")
-    ap.add_argument("--read-token", choices=prompts.READ_TOKEN_CHOICES, default="a",
+    ap.add_argument("--operation", choices=tasks.OPERATION_CHOICES, default="addition",
+                    help="arithmetic operation whose framings are analyzed.")
+    ap.add_argument("--framing", choices=tasks.FRAMING_NAMES, default="symbolic",
+                    help="per-layer runs only: which framing (ignored under --summary).")
+    ap.add_argument("--read-token", choices=tasks.READ_TOKEN_CHOICES, default="a",
                     dest="read_token",
-                    help="which position to analyze: a/b = operand tokens, sum = last token.")
+                    help="a/b = operand tokens, sum = last token.")
     ap.add_argument("--b_fixed", type=int, default=5,
-                    help="fixed second operand b for templates that use it (templates 3,4).")
+                    help="fixed second operand b for framings that use it.")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     if not args.summary and args.layer is None:
         ap.error("--layer is required unless --summary is set")
-    prompts.validate_read_token(args.read_token, args.context)
 
     model = models.load_model(args.model)
     tok_map = models.number_token_ids(model, args.lo, args.hi)
-    values = _contiguous_prefix(np.array(sorted(tok_map)))
+    values = repcli.contiguous_prefix(np.array(sorted(tok_map)))
     if values.size < 8:
         raise SystemExit(f"too few single-token numbers in [{args.lo},{args.hi}] for a DFT")
 
-    prompt_list = prompts.build_prompts(args.context, values, args.b_fixed)
-    token_index = prompts.read_token_index(model, prompt_list[0], args.read_token,
-                                           args.context)
-    print(f"[{args.context}] read-token={args.read_token} at index {token_index}; "
-          f"b={args.b_fixed if prompts.template_has_b(args.context) else '-'}")
-
     out = config.run_dir("week1_number_representation", args.seed,
                          model=args.model,
-                         label=f"run_fourier_components_raw/{args.context}",
+                         label=f"run_fourier_components_raw/{args.operation}",
                          meta={"script": "run_fourier_components_raw.py",
-                               "context": args.context, "read_token": args.read_token,
+                               "operation": args.operation, "read_token": args.read_token,
                                "layer": args.layer if not args.summary else None,
-                               "summary": bool(args.summary)})
+                               "summary": bool(args.summary),
+                               "framing": None if args.summary else args.framing})
 
     if args.summary:
-        _run_summary(model, args, prompt_list, token_index, values, out)
+        _run_summary(model, args, values, out)
         return
 
+    tasks.validate_read_token(args.read_token, args.operation, args.framing)
+    prompt_list = tasks.build_prompts(args.operation, args.framing, values, args.b_fixed)
+    token_index = tasks.read_token_index(model, prompt_list[0], args.read_token,
+                                         args.operation, args.framing)
+    print(f"[{args.operation}/{args.framing}] read-token={args.read_token} at index "
+          f"{token_index}; b={args.b_fixed if tasks.template_has_b(args.operation, args.framing) else '-'}")
     mlp_hook = f"blocks.{args.layer}.hook_mlp_out"
     attn_hook = f"blocks.{args.layer}.hook_attn_out"
     caches = cache_number_site_all_layers(model, prompt_list, [mlp_hook, attn_hook],
                                           token_index=token_index)
-    specs = {
-        "mlp": fourier.number_dft(caches[mlp_hook], values),
-        "attn": fourier.number_dft(caches[attn_hook], values),
-    }
-    site = f"components_raw.L{args.layer}"
+    specs = {"mlp": fourier.number_dft(caches[mlp_hook], values),
+             "attn": fourier.number_dft(caches[attn_hook], values)}
     summary = {
-        "model": args.model, "site": site, "context": args.context,
-        "read_token": args.read_token, "layer": args.layer,
-        "b_fixed": args.b_fixed if prompts.template_has_b(args.context) else None,
-        "n_numbers": int(values.size),
-        "value_range": [int(values[0]), int(values[-1])],
+        "model": args.model, "site": f"components_raw.L{args.layer}",
+        "operation": args.operation, "framing": args.framing,
+        "read_token": args.read_token, "layer": args.layer, "b_fixed": args.b_fixed,
+        "n_numbers": int(values.size), "value_range": [int(values[0]), int(values[-1])],
         "mlp_dominant_periods_top10": [float(p) for p in specs["mlp"]["dominant_periods"]],
         "attn_dominant_periods_top10": [float(p) for p in specs["attn"]["dominant_periods"]],
     }
-    (out / f"L{args.layer}.{args.read_token}.json").write_text(json.dumps(summary, indent=2))
-    _plot(specs, out / f"L{args.layer}.{args.read_token}.png",
-          args.model, args.layer, args.context, args.read_token)
+    stem = f"L{args.layer}.{args.framing}.{args.read_token}"
+    (out / f"{stem}.json").write_text(json.dumps(summary, indent=2))
+    repcli.plot_component_spectra(specs, out / f"{stem}.png", model=args.model,
+                                  layer=args.layer, operation=args.operation,
+                                  framing=args.framing, read_token=args.read_token,
+                                  value_unit="activation")
     print(f"[done] MLP top5 periods:  {summary['mlp_dominant_periods_top10'][:5]}")
     print(f"[done] attn top5 periods: {summary['attn_dominant_periods_top10'][:5]}")
-    print(f"[done] wrote {out} (site={site}, context={args.context}, read={args.read_token})")
+    print(f"[done] wrote {out} ({stem})")
 
 
-def _run_summary(model, args, prompt_list, token_index, values, out):
-    """[zhou2024] Fig 3 in ACTIVATION space: sweep every layer, build the
-    layer x frequency heatmap of MLP and attention raw-output magnitudes, side by side."""
+def _run_summary(model, args, values, out):
+    """[zhou2024] Fig 3 in ACTIVATION space: one panel per framing, MLP and attention in
+    SEPARATE files."""
+    framings = repcli.framings_for_summary(args.operation, args.read_token)
+    if not framings:
+        raise SystemExit("no framing compatible with --read-token for this operation")
     lo, hi = (args.layers if args.layers is not None else (0, model.cfg.n_layers - 1))
     if not (0 <= lo <= hi <= model.cfg.n_layers - 1):
         raise SystemExit(f"--layers {lo} {hi} out of range [0,{model.cfg.n_layers - 1}]")
     layers = list(range(lo, hi + 1))
     mlp_hooks = [f"blocks.{L}.hook_mlp_out" for L in layers]
     attn_hooks = [f"blocks.{L}.hook_attn_out" for L in layers]
-    caches = cache_number_site_all_layers(model, prompt_list, mlp_hooks + attn_hooks,
-                                          token_index=token_index)
-    mlp_specs = [fourier.number_dft(caches[f"blocks.{L}.hook_mlp_out"], values)
-                 for L in layers]
-    attn_specs = [fourier.number_dft(caches[f"blocks.{L}.hook_attn_out"], values)
-                  for L in layers]
 
-    mlp_mat, freqs = plotting.stack_power(mlp_specs)
-    attn_mat, _ = plotting.stack_power(attn_specs)
-    plotting.plot_layer_freq_heatmap(
-        [("MLP output", mlp_mat), ("Attention output", attn_mat)],
-        freqs, layers, args.context, out / f"summary_layers.{args.read_token}.png",
-        model=args.model, value_unit="activation", transform=args.power_transform,
-        cmap=args.cmap, vmax_percentile=args.vmax_percentile,
-        title=f"Component-output activations in Fourier space across layers — "
-              f"{args.model} — {args.context} — read={args.read_token}")
+    mlp_panels, attn_panels, freqs, dom = [], [], None, {}
+    for framing in framings:
+        prompt_list = tasks.build_prompts(args.operation, framing, values, args.b_fixed)
+        token_index = tasks.read_token_index(model, prompt_list[0], args.read_token,
+                                             args.operation, framing)
+        caches = cache_number_site_all_layers(model, prompt_list, mlp_hooks + attn_hooks,
+                                              token_index=token_index)
+        mlp_specs = [fourier.number_dft(caches[f"blocks.{L}.hook_mlp_out"], values)
+                     for L in layers]
+        attn_specs = [fourier.number_dft(caches[f"blocks.{L}.hook_attn_out"], values)
+                      for L in layers]
+        mlp_mat, freqs = plotting.stack_power(mlp_specs)
+        attn_mat, _ = plotting.stack_power(attn_specs)
+        mlp_panels.append((framing, mlp_mat))
+        attn_panels.append((framing, attn_mat))
+        dom[framing] = {
+            "mlp": {int(L): [float(p) for p in s["dominant_periods"][:5]]
+                    for L, s in zip(layers, mlp_specs)},
+            "attn": {int(L): [float(p) for p in s["dominant_periods"][:5]]
+                     for L, s in zip(layers, attn_specs)}}
+
+    for side, panels in (("MLP", mlp_panels), ("Attn", attn_panels)):
+        plotting.plot_layer_freq_heatmap(
+            panels, freqs, layers, args.operation,
+            out / f"summary_{side}.{args.read_token}.png", model=args.model,
+            value_unit="activation", transform=args.power_transform, cmap=args.cmap,
+            vmax_percentile=args.vmax_percentile,
+            title=f"{side}-output activations in Fourier space across layers — "
+                  f"{args.model} — {args.operation} — read={args.read_token}")
     summary = {
-        "model": args.model, "site": "components_raw.summary", "context": args.context,
-        "read_token": args.read_token, "transform": args.power_transform,
-        "b_fixed": args.b_fixed if prompts.template_has_b(args.context) else None,
-        "layers": layers, "n_numbers": int(values.size),
+        "model": args.model, "site": "components_raw.summary", "operation": args.operation,
+        "framings": framings, "read_token": args.read_token,
+        "transform": args.power_transform, "layers": layers, "n_numbers": int(values.size),
         "value_range": [int(values[0]), int(values[-1])],
-        "freqs": [float(f) for f in freqs],
-        "mlp_dominant_periods_by_layer": {
-            int(L): [float(p) for p in s["dominant_periods"][:5]]
-            for L, s in zip(layers, mlp_specs)},
-        "attn_dominant_periods_by_layer": {
-            int(L): [float(p) for p in s["dominant_periods"][:5]]
-            for L, s in zip(layers, attn_specs)},
+        "freqs": [float(f) for f in freqs], "dominant_periods_by_framing": dom,
     }
     (out / f"summary_layers.{args.read_token}.json").write_text(json.dumps(summary, indent=2))
-    print(f"[done] summary heatmap over layers {lo}..{hi} "
-          f"(transform={args.power_transform}, read={args.read_token})")
-    print(f"[done] wrote {out}/summary_layers.{args.read_token}.png (context={args.context})")
-
-
-def _annotate(ax, spec, k=6):
-    for idx in spec["dominant_freq_idx"][:k]:
-        f = spec["freqs"][idx]
-        if f <= 0:
-            continue
-        ax.annotate(f"T={1.0/f:.2f}", (f, spec["power"][idx]),
-                    textcoords="offset points", xytext=(0, 4), fontsize=7, ha="center")
-
-
-def _plot(specs, path, model, layer, context, read_token):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    fig, axes = plt.subplots(1, 2, figsize=(13, 4), sharex=True)
-    for ax, name, title in ((axes[0], "mlp", "MLP output"),
-                            (axes[1], "attn", "Attention output")):
-        s = specs[name]
-        ax.plot(s["freqs"], s["power"], marker="o", ms=2)
-        _annotate(ax, s)
-        ax.set_xlabel("frequency (cycles / integer)")
-        ax.set_title(f"{title} — L{layer}")
-    axes[0].set_ylabel("mean power (activation)")
-    fig.suptitle(f"Component-output activations in Fourier space — {model} "
-                 f"— L{layer} ({context}, read={read_token})")
-    fig.tight_layout()
-    fig.savefig(path, dpi=130)
+    print(f"[done] summary heatmaps over layers {lo}..{hi}, framings={framings}")
+    print(f"[done] wrote {out}/summary_MLP.{args.read_token}.png + summary_Attn.{args.read_token}.png")
 
 
 if __name__ == "__main__":
