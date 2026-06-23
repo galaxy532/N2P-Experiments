@@ -98,7 +98,7 @@ N2P-Experiments/
 │   │   ├── run_fourier.py                # DFT of resid_post / embeddings (activation space)
 │   │   ├── run_fourier_components.py     # DFT of MLP/attn output LOGITS [zhou2024 Fig 2-3]
 │   │   ├── run_fourier_components_raw.py # DFT of MLP/attn output ACTIVATIONS (SAE-relevant)
-│   │   ├── run_causal_validation.py      # helix full/magnitude/modular + PCA baseline vs full-layer
+│   │   ├── run_causal_validation.py      # helix full/magnitude/modular + PCA baseline vs full-layer, swept per layer & operation
 │   │   └── run_te_de_probe.py            # TE/DE write-site localization [kantamneni2025 Fig 6]
 │   └── week1_circuit_sanity/
 │       ├── README.md
@@ -171,7 +171,7 @@ python3 experiments/week1_number_representation/run_fourier_components_raw.py --
 # {amplitude,power,log} default amplitude=sqrt(power)=||C_k||; --cmap, --vmax-percentile).
 python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --summary --operation addition --read-token sum  # -> summary_MLP + summary_Attn
 python3 experiments/week1_number_representation/run_fourier.py --model gptj --summary --operation addition --read-token a               # -> summary_resid_post (panel per framing)
-python3 experiments/week1_number_representation/run_causal_validation.py --model gptj  # helix full/magnitude/modular + PCA-9/27 baseline vs full-layer ceiling
+python3 experiments/week1_number_representation/run_causal_validation.py --model gptj  # helix full/magnitude/modular + PCA-9/27 baseline vs full-layer ceiling; swept over --layers (Fig-5/6 curve), any --operation/--framing, first-token answers
 python3 experiments/week1_circuit_sanity/run_discovery_sanity.py --target tracr  # needs Edge-Pruning repo
 ```
 

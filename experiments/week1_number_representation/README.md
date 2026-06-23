@@ -12,7 +12,7 @@ This is go/no-go gate #1.
 | `run_fourier.py` | Fourier features in **activation space** [zhou2024 §4.1] | sparse power spectrum; a magnitude (low-freq) peak + modular peaks at periods {2,2.5,5,10}; present already in **embeddings**. NB: top-10-by-power is dominated by the low-freq magnitude tail — read the *plot peaks*, not the ranking (see `fourier-experiments-week1-results.md`) |
 | `run_fourier_components.py` | per-component **logit** spectra [zhou2024 §3, Figs 2–3] | MLP-output logits dominated by **low-freq** (magnitude/approximation), attention-output logits by **high-freq** periods {2,5,10} (modular/classification) |
 | `run_fourier_components_raw.py` | per-component **activation** spectra (SAE-relevant) | MLP-output / attn-output activations sparse in frequency over the **input** number; the object week-2 SAEs ingest |
-| `run_causal_validation.py` | causal sufficiency [engels2024 §5] | helix-full ÷ full-layer logit-diff ratio near 1.0, and helix-full ≥ the PCA-9/27 baseline (the helix *form*, not generic capacity, is causal) |
+| `run_causal_validation.py` | causal sufficiency [engels2024 §5 / kantamneni2025 Fig 5] | helix-full ÷ full-layer logit-diff ratio near 1.0 **over a layer band**, and helix-full ≥ the PCA-9/27 baseline (the helix *form*, not generic capacity, is causal). Now swept across `--layers` and runnable on any `--operation`/`--framing`. |
 
 **The two `*_components*` scripts answer different questions.** `run_fourier_components.py`
 (logit lens, read at the **sum** token via `--read-token sum`) asks *which residue class a
@@ -54,7 +54,9 @@ python experiments/week1_number_representation/run_fourier_components.py     --m
 python experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --layer 16 --operation addition --framing symbolic --read-token a   # MLP/attn ACTIVATIONS
 python experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --summary --operation addition --read-token a               # Fig 3 heatmaps (activation space)
 python experiments/week1_number_representation/run_fourier.py               --model gptj --summary --operation addition --read-token a               # resid_post heatmap (panel per framing)
-python experiments/week1_number_representation/run_causal_validation.py --model gptj   # addition-only (not operation-based)
+python experiments/week1_number_representation/run_causal_validation.py --model gptj                                                 # addition/symbolic; default layer band swept
+python experiments/week1_number_representation/run_causal_validation.py --model gptj --operation modular --framing symbolic          # any operation/framing (answer from task.fn)
+python experiments/week1_number_representation/run_causal_validation.py --model gptj --operation multiplication --layers 10 14 18 22  # restrict the layer-of-intervention sweep
 # then repeat with --model llama3-8b (confirm build_layers in config.py from the helix sweep)
 ```
 
@@ -76,7 +78,7 @@ results/week1_number_representation/<model>/
 │                                     summary_MLP.<rt>.png + summary_Attn.<rt>.png   (--summary; panel per framing)
 ├── run_fourier_components_raw/<operation>/ L<n>.<framing>.<rt>.png|json  (raw activations)
 │                                     summary_MLP.<rt>.png + summary_Attn.<rt>.png   (--summary; panel per framing)
-└── run_causal_validation/addition/   causal_validation.json   (addition-only; no operation/framing)
+└── run_causal_validation/<operation>/ causal_validation.<framing>.json, causal_by_layer.<framing>.png  (per-layer sweep; Fig-5/6 curve)
 ```
 `<model>` is `GPT-J` for `--model gptj`, `Llama-3-8B` for `--model llama3-8b`; `<rt>` is the
 `--read-token`. Each folder has a `run_meta.json` (date, git sha, seed, model, operation,
@@ -94,12 +96,25 @@ split). `--layers LO HI` restricts the band; colour defaults to `--power-transfo
 `--vmax-percentile 99.5`, `--cmap inferno_r`. Outlier components expected at periods ~2, 2.5, 5, 10.
 
 ## Causal validation outputs (`run_causal_validation.py`)
-Reports, per method, the mean operand-`a→a'` logit-diff and its ratio to the full-layer
-patch (the ceiling); `noop` is the floor:
+Sweeps the patch across **layers of intervention** (`--layers`, default a band from
+`min(build_layers)-4` to the last layer) for one `--operation`/`--framing`, and for each
+layer reports, per method, the mean operand-`a→a'` logit-diff and its ratio to the
+full-layer patch (the ceiling); `noop` is the floor. Output is a two-panel plot
+(`causal_by_layer.<framing>.png`: absolute logit-diff + ratio-over-full-layer vs **layer of
+intervention** — the [kantamneni2025] Fig-5 / [engels2024] Fig-6 shape) plus the JSON.
 
-- `helix_full` — the whole helix (linear + all periods + DC). Near the full-layer ceiling ⇒ the helix subspace is causally sufficient.
+- `helix_full` — the whole helix (linear + all periods + DC). Tracking the full-layer ceiling over a layer band ⇒ the helix subspace is causally sufficient there.
 - `helix_magnitude` / `helix_modular` — the **separable** split: magnitude = linear + DC + `T=100` (low-freq); modular = `T=2,5,10` (high-freq). Shows which part carries the effect (the stub replaces the magnitude part exactly, [zhou2024 Table 1]).
 - `pca9` / `pca27` — **PCA-reconstruction baseline** ([kantamneni2025] Fig 5): patches the real `a'` activation's top-k PCA reconstruction, no helix assumed. `9` is capacity-matched to the helix, `27` is over-capacity. `helix_full` matching/beating these (with far fewer *effective* dims — the helix populates only ~7–8 dims over integers, since `sin(2πa/2)≡0`) is the evidence that the periodic **form**, not raw subspace capacity, is causal.
+
+**Operation/framing semantics.** The operand-`a` representation (and the fitted helix
+basis) is *identical* across operations sharing a pre-`{a}` prefix (causal masking), but the
+patch measurement runs the **operation-specific downstream** to the answer — so per-operation
+causal sufficiency is a genuinely distinct test (do mult/div/modular read the operand
+*helically*, or via heuristics outside the subspace? — the stress-set question). The helix is
+fit once and the basis reused across operations; only patch-and-measure repeats. **Cost** is
+`layers × n_test × methods` patched forwards (the setup line prints the count) — restrict
+`--layers`/`--n_test` for a first pass.
 
 ## TE/DE write-site probe (`run_te_de_probe.py`, optional validation)
 Not part of the core reproduction sequence — a role-labeling pass that reproduces
@@ -131,8 +146,12 @@ freezes every component, so it is ~`2*n_layers*n_test` patched forwards — rest
 - Only **single-token integers** are used; tokenizers split many numbers. Llama-3 and
   GPT-J tokenize numbers differently — the contiguous-range filter handles this but the
   usable range will differ per model.
-- `run_causal_validation` assumes the operand and the answer are single tokens; small
-  operands / small answers keep this true. Widen ranges only after it runs.
+- `run_causal_validation` requires single-token **operands** (the patch site is one token),
+  but answers are scored on their **first token** (`first_token_id`, the accuracy-probe
+  convention), so multi-token answers (e.g. multiplication) are admissible — as a
+  leading-digit/magnitude test, not full-value (`frac_single_token_answers` flags how often
+  it is exact; modular/small-addition are exact). Triples whose two answers share a first
+  token are skipped (the logit-diff would be ~0 by construction).
 - For Llama-3-8B, `build_layers` in `config.py` is a placeholder — set it from the
   `run_helix_fit` sweep before running causal validation with the default layer.
 - In word/wordproblem framings the operand `a` may not be at the first content position;
