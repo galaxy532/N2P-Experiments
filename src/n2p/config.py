@@ -41,13 +41,22 @@ class ModelSpec:
     # results/<exp>/<dir_name>/<script>/<context>/ (see run_dir). Defaults to the
     # registry key if unset.
     dir_name: str = ""
+    # Model-specific zero-shot instruction PREFIX prepended to every prompt (see
+    # tasks.build_prompt). [kantamneni2025]'s repo found different models need different
+    # prompts to actually perform the task: GPT-J "Output ONLY a number.\n", Llama-3.1
+    # "The following is a correct addition problem. \n". We GENERALIZE Llama's to "math
+    # problem" because our family spans subtraction/mult/div/modular (the paper was
+    # addition-only) — confirm it still elicits the task via the accuracy probe, and
+    # ablate with --prefix "". MUST be digit-free so operand indexing (first digit-bearing
+    # token = operand a) is unaffected.
+    prompt_prefix: str = ""
 
 
 MODELS: dict[str, ModelSpec] = {
     # [kantamneni2025]: MLPs ~14-18 build helix(a+b) on GPT-J (28 layers).
     "gptj": ModelSpec("gptj", "EleutherAI/gpt-j-6B", "gpt-j-6b",
                       n_layers=28, d_model=4096, build_layers=(14, 18),
-                      dir_name="GPT-J"),
+                      dir_name="GPT-J", prompt_prefix="Output ONLY a number.\n"),
     # Llama-3-8B: 32 layers, d_model 4096. [kantamneni2025] validated the helix on
     # Llama-3.1-8B but reports the build/read split on GPT-J. PRIOR for Llama: scale
     # GPT-J's mid-network build fraction (14-18 of 28 ≈ 0.50-0.64 depth) to 32 layers
@@ -57,7 +66,8 @@ MODELS: dict[str, ModelSpec] = {
     "llama3-8b": ModelSpec("llama3-8b", "meta-llama/Meta-Llama-3-8B",
                            "meta-llama/Meta-Llama-3-8B",
                            n_layers=32, d_model=4096, gated=True, build_layers=(16, 21),
-                           dir_name="Llama-3-8B"),
+                           dir_name="Llama-3-8B",
+                           prompt_prefix="The following is a correct math problem. \n"),
 }
 
 

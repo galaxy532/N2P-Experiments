@@ -7,9 +7,14 @@ activations for feature tracking — and (b) where the model is weak (candidates
 write-site-bypass / stub story, and for the fine-tuning fallback decision).
 
 Method: k-shot prompting (frozen model, no fine-tuning — see the feature-tracking wiki
-note "Model preparation"); greedy next-token; score by whether the top token matches
-the FIRST token of the gold answer (exact for single-token answers; first-token
-approximation otherwise — reported separately).
+note "Model preparation"); greedy decoding. TWO scores are reported per (task, framing):
+  - exact_value_acc : the full generated integer equals the gold answer (robust across
+                      tokenizers and answer lengths — the reliable metric).
+  - first_token_acc : the first CONTENT (non-space) token matches the gold's first content
+                      token (the cheap literature-style proxy; exact for single-token
+                      answers, leading-digit/magnitude otherwise). Derived from the same
+                      generation, skipping a leading-space token so it is meaningful on
+                      Llama-3 (which emits the space as its own token).
 
     python3 experiments/week1_accuracy_probe/run_accuracy_probe.py --model gptj
     python3 experiments/week1_accuracy_probe/run_accuracy_probe.py --model gptj --kshot 4 --n 100
@@ -19,6 +24,7 @@ This is a behavioral probe (no activations cached) so it is cheap to run first.
 """
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -28,12 +34,34 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from n2p import config, models, tasks   # noqa: E402
 
 
-def first_token_id(model, answer: int) -> int:
-    return int(model.to_tokens(f" {answer}", prepend_bos=False)[0, 0].item())
+@torch.no_grad()
+def greedy_generate(model, toks, max_new_tokens: int) -> list[int]:
+    """Greedy-decode up to `max_new_tokens` ids, stopping at the first newline (few-shot
+    lines are newline-separated). Returns the generated ids (newline excluded)."""
+    gen: list[int] = []
+    cur = toks
+    for _ in range(max_new_tokens):
+        logits = model(cur)
+        nxt = int(logits[0, -1].argmax().item())
+        if "\n" in model.to_string([nxt]):
+            break
+        gen.append(nxt)
+        cur = torch.cat([cur, torch.tensor([[nxt]], device=cur.device)], dim=1)
+    return gen
 
 
-def is_single_token(model, answer: int) -> bool:
-    return model.to_tokens(f" {answer}", prepend_bos=False).shape[1] == 1
+def first_content_token_id(model, ids: list[int]):
+    """First non-whitespace token id in `ids` (skips a leading-space token, e.g. Llama-3)."""
+    for tid in ids:
+        if model.to_string([tid]).strip() != "":
+            return tid
+    return None
+
+
+def parse_leading_int(text: str):
+    """Leading (optionally signed) integer in the generated text, or None."""
+    m = re.search(r"-?\d+", text)
+    return int(m.group()) if m else None
 
 
 def build_fewshot(template: str, shots, query) -> str:
@@ -44,22 +72,24 @@ def build_fewshot(template: str, shots, query) -> str:
 
 
 @torch.no_grad()
-def accuracy_for(model, task, framing_name, template, kshot, n, seed):
+def accuracy_for(model, task, framing_name, template, kshot, n, seed, gen_tokens, prefix=""):
     data = task.sample(n + kshot, seed=seed)
     shots, queries = data[:kshot], data[kshot:]
-    n_total = n_correct = n_single = 0
+    n_total = n_exact = n_first = n_single = 0
     for q in queries:
-        prompt = build_fewshot(template, shots, q)
-        toks = model.to_tokens(prompt)
-        logits = model(toks)
-        pred = int(logits[0, -1].argmax().item())
-        gold = first_token_id(model, q["answer"])
+        toks = model.to_tokens(prefix + build_fewshot(template, shots, q))
+        gen_ids = greedy_generate(model, toks, gen_tokens)
+        pred_value = parse_leading_int(model.to_string(gen_ids) if gen_ids else "")
+        pred_first = first_content_token_id(model, gen_ids)
+        gold_first = models.first_answer_token_id(model, q["answer"])
         n_total += 1
-        n_correct += int(pred == gold)
-        n_single += int(is_single_token(model, q["answer"]))
+        n_exact += int(pred_value == q["answer"])
+        n_first += int(pred_first is not None and pred_first == gold_first)
+        n_single += int(models.is_single_token_answer(model, q["answer"]))
     return {
         "framing": framing_name, "n": n_total,
-        "first_token_acc": round(n_correct / max(n_total, 1), 4),
+        "exact_value_acc": round(n_exact / max(n_total, 1), 4),
+        "first_token_acc": round(n_first / max(n_total, 1), 4),
         "frac_single_token_answers": round(n_single / max(n_total, 1), 4),
     }
 
@@ -70,25 +100,36 @@ def main():
     ap.add_argument("--kshot", type=int, default=4)
     ap.add_argument("--n", type=int, default=100)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--gen-tokens", type=int, default=6, dest="gen_tokens",
+                    help="max new tokens to greedy-decode per query for exact-value scoring "
+                         "(enough for the largest product, e.g. 20*20=400, plus a sign).")
+    ap.add_argument("--prefix", default=None,
+                    help="model instruction prefix prepended to the few-shot prompt; default "
+                         "= config ModelSpec.prompt_prefix for --model. Pass '' to ablate.")
     ap.add_argument("--tasks", nargs="*", default=None,
                     help="task names; default = all except greater_than")
     args = ap.parse_args()
 
     model = models.load_model(args.model)
+    prefix = args.prefix if args.prefix is not None else config.get_model_spec(args.model).prompt_prefix
+    print(f"[prefix] {prefix!r}")
     task_names = args.tasks or [n for n in tasks.REGISTRY if n != "greater_than"]
 
     rows = []
     for tname in task_names:
         task = tasks.get_task(tname)
         for fname, template in tasks.framings_for(task):
-            res = accuracy_for(model, task, fname, template, args.kshot, args.n, args.seed)
+            res = accuracy_for(model, task, fname, template, args.kshot, args.n, args.seed,
+                               args.gen_tokens, prefix)
             res.update(task=tname, tier=task.tier)
             rows.append(res)
-            print(f"{tname:16s} {fname:12s} acc={res['first_token_acc']:.3f} "
+            print(f"{tname:16s} {fname:12s} exact={res['exact_value_acc']:.3f} "
+                  f"first-tok={res['first_token_acc']:.3f} "
                   f"(single-tok answers {res['frac_single_token_answers']:.2f})")
 
     out = config.run_dir("week1_accuracy_probe", args.seed, model=args.model)
-    summary = {"model": args.model, "kshot": args.kshot, "n": args.n, "rows": rows}
+    summary = {"model": args.model, "kshot": args.kshot, "n": args.n,
+               "gen_tokens": args.gen_tokens, "prefix": prefix, "rows": rows}
     (out / "accuracy.json").write_text(json.dumps(summary, indent=2))
     _write_table(rows, out / "accuracy_table.md", args.model, args.kshot)
     print(f"[done] wrote {out}")
@@ -96,11 +137,13 @@ def main():
 
 def _write_table(rows, path, model, kshot):
     lines = [f"# Few-shot accuracy — {model} (k={kshot})", "",
-             "| task | tier | framing | first-token acc | single-tok answers |",
-             "|---|---|---|---|---|"]
+             "| task | tier | framing | exact-value acc | first-token acc | "
+             "single-tok answers |",
+             "|---|---|---|---|---|---|"]
     for r in rows:
         lines.append(f"| {r['task']} | {r['tier']} | {r['framing']} | "
-                     f"{r['first_token_acc']:.3f} | {r['frac_single_token_answers']:.2f} |")
+                     f"{r['exact_value_acc']:.3f} | {r['first_token_acc']:.3f} | "
+                     f"{r['frac_single_token_answers']:.2f} |")
     path.write_text("\n".join(lines) + "\n")
 
 

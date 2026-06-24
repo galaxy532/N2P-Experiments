@@ -32,7 +32,8 @@ def _fit_one_framing(model, spec, operation, framing, values, args):
     if args.read_token == "b" and not tasks.template_has_b(operation, framing):
         print(f"[skip] {operation}/{framing}: --read-token b invalid (no operand b)")
         return None
-    prompt_list = tasks.build_prompts(operation, framing, values, args.b_fixed)
+    prefix = args.prefix if args.prefix is not None else spec.prompt_prefix
+    prompt_list = tasks.build_prompts(operation, framing, values, args.b_fixed, prefix=prefix)
     token_index = tasks.read_token_index(model, prompt_list[0], args.read_token,
                                          operation, framing)
     print(f"[{operation}/{framing}] read-token={args.read_token} at index {token_index}; "
@@ -67,20 +68,28 @@ def main():
                          "b = second operand, sum = last token.")
     ap.add_argument("--b_fixed", type=int, default=5,
                     help="fixed second operand b for framings that use it.")
+    ap.add_argument("--prefix", default=None,
+                    help="model instruction prefix prepended to every prompt; default = "
+                         "config ModelSpec.prompt_prefix for --model. Pass '' to ablate.")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
     spec = config.get_model_spec(args.model)
     model = models.load_model(args.model)
+    prefix = args.prefix if args.prefix is not None else spec.prompt_prefix
+    print(f"[prefix] {prefix!r}")
 
-    tok_map = models.number_token_ids(model, args.lo, args.hi)
-    values = repcli.contiguous_prefix(np.array(sorted(tok_map)))
+    # Operand grid validated against the real prompt (symbolic framing as the canonical
+    # surface form); contiguous prefix keeps the even grid the helix/DFT expect.
+    grid_values, _ = tasks.single_token_number_grid(model, args.operation, "symbolic",
+                                                    args.lo, args.hi, b=args.b_fixed)
+    values = repcli.contiguous_prefix(np.array(grid_values))
 
     out = config.run_dir("week1_number_representation", args.seed,
                          model=args.model,
                          label=f"run_helix_fit/{args.operation}",
                          meta={"script": "run_helix_fit.py", "operation": args.operation,
-                               "read_token": args.read_token})
+                               "read_token": args.read_token, "prefix": prefix})
 
     by_framing = {}
     for framing in tasks.FRAMING_NAMES:
@@ -98,7 +107,7 @@ def main():
     summary = {
         "model": args.model, "hf_id": spec.hf_id, "operation": args.operation,
         "n_numbers": len(values), "value_range": [int(values[0]), int(values[-1])],
-        "n_pca": args.n_pca, "read_token": args.read_token,
+        "n_pca": args.n_pca, "read_token": args.read_token, "prefix": prefix,
         "b_fixed": args.b_fixed, "expected_build_layers": list(spec.build_layers),
         "per_framing": {
             f: {"per_layer": pl,

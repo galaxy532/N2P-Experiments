@@ -47,14 +47,21 @@ def main():
                     help="a/b = operand tokens, sum = last token.")
     ap.add_argument("--b_fixed", type=int, default=5,
                     help="fixed second operand b for framings that use it.")
+    ap.add_argument("--prefix", default=None,
+                    help="model instruction prefix prepended to every prompt; default = "
+                         "config ModelSpec.prompt_prefix for --model. Pass '' to ablate.")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     if not args.summary and args.layer is None:
         ap.error("--layer is required unless --summary is set")
 
     model = models.load_model(args.model)
-    tok_map = models.number_token_ids(model, args.lo, args.hi)
-    values = repcli.contiguous_prefix(np.array(sorted(tok_map)))
+    prefix = args.prefix if args.prefix is not None else config.get_model_spec(args.model).prompt_prefix
+    print(f"[prefix] {prefix!r}")
+    # Operand grid validated against the real prompt (canonical symbolic framing).
+    grid_values, _ = tasks.single_token_number_grid(model, args.operation, "symbolic",
+                                                    args.lo, args.hi, b=args.b_fixed)
+    values = repcli.contiguous_prefix(np.array(grid_values))
     if values.size < 8:
         raise SystemExit(f"too few single-token numbers in [{args.lo},{args.hi}] for a DFT")
 
@@ -68,11 +75,12 @@ def main():
                                "framing": None if args.summary else args.framing})
 
     if args.summary:
-        _run_summary(model, args, values, out)
+        _run_summary(model, args, values, out, prefix)
         return
 
     tasks.validate_read_token(args.read_token, args.operation, args.framing)
-    prompt_list = tasks.build_prompts(args.operation, args.framing, values, args.b_fixed)
+    prompt_list = tasks.build_prompts(args.operation, args.framing, values, args.b_fixed,
+                                      prefix=prefix)
     token_index = tasks.read_token_index(model, prompt_list[0], args.read_token,
                                          args.operation, args.framing)
     print(f"[{args.operation}/{args.framing}] read-token={args.read_token} at index "
@@ -102,7 +110,7 @@ def main():
     print(f"[done] wrote {out} ({stem})")
 
 
-def _run_summary(model, args, values, out):
+def _run_summary(model, args, values, out, prefix=""):
     """[zhou2024] Fig 3 in ACTIVATION space: one panel per framing, MLP and attention in
     SEPARATE files."""
     framings = repcli.framings_for_summary(args.operation, args.read_token)
@@ -117,7 +125,8 @@ def _run_summary(model, args, values, out):
 
     mlp_panels, attn_panels, freqs, dom = [], [], None, {}
     for framing in framings:
-        prompt_list = tasks.build_prompts(args.operation, framing, values, args.b_fixed)
+        prompt_list = tasks.build_prompts(args.operation, framing, values, args.b_fixed,
+                                          prefix=prefix)
         token_index = tasks.read_token_index(model, prompt_list[0], args.read_token,
                                              args.operation, framing)
         caches = cache_number_site_all_layers(model, prompt_list, mlp_hooks + attn_hooks,

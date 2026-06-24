@@ -54,12 +54,20 @@ def main():
                          "supports 'a' (the swept operand).")
     ap.add_argument("--b_fixed", type=int, default=5,
                     help="fixed second operand b for framings that use it.")
+    ap.add_argument("--prefix", default=None,
+                    help="model instruction prefix prepended to every prompt; default = "
+                         "config ModelSpec.prompt_prefix for --model. Pass '' to ablate.")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
     model = models.load_model(args.model)
-    tok_map = models.number_token_ids(model, args.lo, args.hi)
-    values = repcli.contiguous_prefix(np.array(sorted(tok_map)))
+    prefix = args.prefix if args.prefix is not None else config.get_model_spec(args.model).prompt_prefix
+    print(f"[prefix] {prefix!r}")
+    # Operand grid validated against the real prompt (canonical symbolic framing; operand
+    # single-token-ness is framing-independent). id_map -> in-context vocab id for W_E rows.
+    grid_values, id_map = tasks.single_token_number_grid(model, args.operation, "symbolic",
+                                                        args.lo, args.hi, b=args.b_fixed)
+    values = repcli.contiguous_prefix(np.array(grid_values))
 
     out = config.run_dir("week1_number_representation", args.seed,
                          model=args.model,
@@ -70,7 +78,7 @@ def main():
                                "framing": None if args.summary else args.framing})
 
     if args.summary:
-        _run_summary(model, args, values, out)
+        _run_summary(model, args, values, out, prefix)
         return
 
     if args.layer is None:
@@ -78,12 +86,13 @@ def main():
         if args.read_token != "a":
             print(f"[warn] embedding site only varies with the swept operand; "
                   f"--read-token {args.read_token} treated as 'a' (W_E rows).")
-        ids = torch.tensor([tok_map[int(v)] for v in values], device=model.cfg.device)
+        ids = torch.tensor([id_map[int(v)] for v in values], device=model.cfg.device)
         acts = model.W_E[ids].float().cpu().numpy()
         site, read_token, framing = "embedding", "a", "embedding"
     else:
         tasks.validate_read_token(args.read_token, args.operation, args.framing)
-        prompt_list = tasks.build_prompts(args.operation, args.framing, values, args.b_fixed)
+        prompt_list = tasks.build_prompts(args.operation, args.framing, values, args.b_fixed,
+                                          prefix=prefix)
         token_index = tasks.read_token_index(model, prompt_list[0], args.read_token,
                                              args.operation, args.framing)
         print(f"[{args.operation}/{args.framing}] read-token={args.read_token} at index "
@@ -111,7 +120,7 @@ def main():
           f"read={read_token})")
 
 
-def _run_summary(model, args, values, out):
+def _run_summary(model, args, values, out, prefix=""):
     """[zhou2024] Fig 3 for the residual stream: one panel per framing, each a
     layer x frequency heatmap (resid_post has no MLP/attn split)."""
     framings = repcli.framings_for_summary(args.operation, args.read_token)
@@ -125,7 +134,8 @@ def _run_summary(model, args, values, out):
 
     panels, freqs, dom_by_framing = [], None, {}
     for framing in framings:
-        prompt_list = tasks.build_prompts(args.operation, framing, values, args.b_fixed)
+        prompt_list = tasks.build_prompts(args.operation, framing, values, args.b_fixed,
+                                          prefix=prefix)
         token_index = tasks.read_token_index(model, prompt_list[0], args.read_token,
                                              args.operation, framing)
         caches = cache_number_site_all_layers(model, prompt_list, hooks,

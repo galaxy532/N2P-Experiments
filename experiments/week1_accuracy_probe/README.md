@@ -11,11 +11,17 @@ python experiments/week1_accuracy_probe/run_accuracy_probe.py --model llama3-8b
 
 ## How to read the output
 `results/week1_accuracy_probe/<run_id>/accuracy_table.md` has one row per (task, framing):
-- **first-token acc** — top predicted token == first token of the gold answer. Exact
-  for single-token answers; a first-token approximation otherwise.
-- **single-tok answers** — fraction of this cell's answers that are single tokens.
-  If this is low (e.g. multiplication, where products get large/multi-token), the
-  accuracy number is only a first-token proxy and needs a generation-based re-check.
+- **exact-value acc** — the full greedily-generated integer equals the gold answer. This
+  is the reliable metric: robust across tokenizers and answer lengths (it parses the
+  decoded integer, so multi-token products like `20*20=400` are scored at full value).
+  Controlled by `--gen-tokens` (default 6, enough for the largest product plus a sign).
+- **first-token acc** — the first CONTENT (non-space) generated token matches the gold's
+  first content token. The cheap literature-style proxy: exact for single-token answers,
+  a leading-digit/magnitude approximation otherwise. The "content" qualifier makes it
+  meaningful on Llama-3, which emits the leading space as its own token.
+- **single-tok answers** — fraction of this cell's answers that are single tokens. When
+  low (e.g. multiplication), trust **exact-value acc**, not first-token acc — the gap
+  between the two columns is exactly the first-token proxy's optimism.
 
 ## What it decides
 - **Which (task, framing) pairs are usable** for feature tracking — only ones the model
@@ -28,8 +34,18 @@ python experiments/week1_accuracy_probe/run_accuracy_probe.py --model llama3-8b
   whether the model computes vs. memorizes — its accuracy here decides whether we keep
   it as a frozen target or move it to the fine-tuning fallback.
 
+## Model prompt prefix (`--prefix`)
+Every few-shot prompt is prepended with a model-specific instruction from
+`config.ModelSpec.prompt_prefix` (GPT-J `"Output ONLY a number.\n"`, Llama-3 `"The following
+is a correct math problem. \n"`), per [kantamneni2025]'s finding that models need different
+prompts to perform. Printed at startup and stored in `accuracy.json`. To measure the
+prefix's effect, run with and without it: `--prefix ""` ablates. (Llama's generic "math
+problem" generalizes the paper's addition-only string across our task family — this probe is
+the check that it still elicits the task.)
+
 ## Caveats
 - Frozen + few-shot only (no fine-tuning) — that is the protocol default.
-- Multi-token answers (big products) make this a first-token proxy; flagged per row.
+- `exact-value acc` removes the multi-token blind spot; `first-token acc` is kept only as
+  the comparable proxy. Read the two together (the gap = proxy optimism), per row.
 - `greater_than` is excluded (comparison, not numeric next-token) — its accuracy is a
   separate logit-difference metric handled with the discovery task.

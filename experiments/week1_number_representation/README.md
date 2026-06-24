@@ -45,6 +45,16 @@ framings); `sum` = last token (the only meaningful logit-lens site for
 logit-lens script. Per-layer runs take a single `--framing` (default `symbolic`); `--summary`
 iterates **all three** framings as panels.
 
+**Model prompt prefix (`--prefix`).** Every prompt is prepended with a model-specific
+zero-shot instruction from `config.ModelSpec.prompt_prefix` — GPT-J `"Output ONLY a
+number.\n"`, Llama-3 `"The following is a correct math problem. \n"` — because
+[kantamneni2025]'s repo found models need different prompts to actually perform (Llama
+especially). It is printed at startup (`[prefix] ...`) and recorded in `run_meta.json` +
+each `summary`. The prefix is **digit-free**, so operand indexing (first digit-bearing token
+= operand `a`) is unchanged. Override with `--prefix "..."`, or `--prefix ""` to ablate.
+**NB:** runs recorded before 2026-06-24 have **no** prefix — they are superseded; re-run the
+helix/Fourier sweeps under the prefix before comparing.
+
 ```bash
 python experiments/week1_number_representation/run_helix_fit.py        --model gptj                                       # operation=addition, 3 framings as panels
 python experiments/week1_number_representation/run_fourier.py          --model gptj                                       # embeddings (activation space)
@@ -143,15 +153,25 @@ freezes every component, so it is ~`2*n_layers*n_test` patched forwards — rest
 - The **MLP-low / attn-high split** confirmed by `run_fourier_components.py` → empirical backing for training **dual-site SAEs on both MLP and attention outputs** (weeks 2–3).
 
 ## Gotchas (expect a debug pass)
-- Only **single-token integers** are used; tokenizers split many numbers. Llama-3 and
-  GPT-J tokenize numbers differently — the contiguous-range filter handles this but the
-  usable range will differ per model.
+- Only **single-token integers** are used; tokenizers split many numbers. The operand grid
+  is built by `tasks.single_token_number_grid`, which validates each candidate against the
+  **real prompt** (the operand-`a` token must be exactly one token) and is therefore
+  tokenizer-agnostic. This replaced the old `models.number_token_ids`, which probed only the
+  space-prefixed form `" {n}"` and returned an **empty grid on Llama-3** (Llama splits the
+  leading space into its own token and groups digits in runs of 1–3, so `" 10" → [" ","10"]`
+  — fixed 2026-06-23). The usable range still differs per model; `contiguous_prefix` keeps
+  the even grid the DFT/helix expect.
 - `run_causal_validation` requires single-token **operands** (the patch site is one token),
-  but answers are scored on their **first token** (`first_token_id`, the accuracy-probe
-  convention), so multi-token answers (e.g. multiplication) are admissible — as a
-  leading-digit/magnitude test, not full-value (`frac_single_token_answers` flags how often
-  it is exact; modular/small-addition are exact). Triples whose two answers share a first
-  token are skipped (the logit-diff would be ~0 by construction).
+  but answers are scored on their **first content token** (`models.first_answer_token_id`),
+  so multi-token answers (e.g. multiplication) are admissible — as a leading-digit/magnitude
+  test, not full-value (`frac_single_token_answers` flags how often it is exact;
+  modular/small-addition are exact). Triples whose two answers share a first token are
+  skipped (the logit-diff would be ~0 by construction). **CAVEAT (Llama-3):** the answer
+  logit is read at the position right after `=`, but Llama emits a *space* there before the
+  digits, so the first-token logit-diff is a "prefer number X over Y, ignoring the space"
+  quantity rather than the realized next token. Decide the trailing-space handling (append a
+  space to the prompt, or score one position later) before trusting Llama causal runs — this
+  is a design choice, not yet made.
 - For Llama-3-8B, `build_layers` in `config.py` is a placeholder — set it from the
   `run_helix_fit` sweep before running causal validation with the default layer.
 - In word/wordproblem framings the operand `a` may not be at the first content position;

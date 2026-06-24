@@ -51,9 +51,9 @@ def operand_a_index(model, prompt):
     raise ValueError(f"could not locate operand a in {model.to_str_tokens(prompt)}")
 
 
-def single_token_answer_id(model, n):
-    ids = model.to_tokens(f" {n}", prepend_bos=False)[0]
-    return int(ids[0]) if ids.shape[0] == 1 else None
+# Model-agnostic single-token answer id (handles tokenizers that split the leading space,
+# e.g. Llama-3; the old ' {n}'.shape==1 check returned None for every answer there).
+single_token_answer_id = models.single_token_answer_id
 
 
 def main():
@@ -67,12 +67,17 @@ def main():
     ap.add_argument("--n_test", type=int, default=15, help="(a,a',b) triples averaged over")
     ap.add_argument("--n_pca", type=int, default=9)
     ap.add_argument("--b_fixed", type=int, default=5)
+    ap.add_argument("--prefix", default=None,
+                    help="model instruction prefix prepended to every prompt; default = "
+                         "config ModelSpec.prompt_prefix for --model. Pass '' to ablate.")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
     rng = random.Random(args.seed)
     spec = config.get_model_spec(args.model)
     model = models.load_model(args.model)
+    prefix = args.prefix if args.prefix is not None else spec.prompt_prefix
+    print(f"[prefix] {prefix!r}")
     build_layer = args.layer if args.layer is not None else (sum(spec.build_layers) // 2 or 16)
     lo, hi = (args.layers if args.layers is not None else (0, spec.n_layers - 1))
     if not (0 <= lo <= hi <= spec.n_layers - 1):
@@ -86,7 +91,7 @@ def main():
               if single_token_answer_id(model, a + args.b_fixed) is not None]
     rng.shuffle(fit_as); fit_as = sorted(fit_as[:args.n_fit])
     sums = np.array([a + args.b_fixed for a in fit_as])
-    fit_prompts = [f"{a}+{args.b_fixed}=" for a in fit_as]
+    fit_prompts = [f"{prefix}{a}+{args.b_fixed}=" for a in fit_as]
     acts = np.stack([causal.cache_number_site(model, [p], build_hook, token_index=-1)[0]
                      for p in fit_prompts], axis=0)
     fitres = helix.fit_helix(acts, sums, n_pca=args.n_pca)
@@ -110,7 +115,7 @@ def main():
     def mean_effects(hook_name, sender_basis=None):
         te = de = ie = 0.0
         for (a, ap_, b, ans_corr, ans_clean) in triples:
-            clean, corrupt = f"{a}+{b}=", f"{ap_}+{b}="
+            clean, corrupt = f"{prefix}{a}+{b}=", f"{prefix}{ap_}+{b}="
             r = causal.te_de_ie(model, clean, corrupt, hook_name,
                                 answer_tokens=(ans_corr, ans_clean), token_index=-1,
                                 sender_basis=sender_basis)

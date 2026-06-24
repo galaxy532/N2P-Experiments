@@ -182,17 +182,24 @@ def template_has_b(operation: str, framing: str) -> bool:
 
 
 # --- prompt construction + read-token selection (was number_repr/prompts.py) ----
-def build_prompt(operation: str, framing: str, a: int, b: int | None = None) -> str:
-    """Build one prompt for operand value `a` (and fixed `b` if the framing uses it)."""
+def build_prompt(operation: str, framing: str, a: int, b: int | None = None,
+                 *, prefix: str = "") -> str:
+    """Build one prompt for operand value `a` (and fixed `b` if the framing uses it).
+
+    `prefix` is the model-specific zero-shot instruction (config.ModelSpec.prompt_prefix);
+    it is prepended verbatim. It MUST be digit-free so operand indexing (first digit-bearing
+    token = operand a) is unaffected — config's prefixes satisfy this.
+    """
     tmpl = framing_template(operation, framing)
     if "{b}" in tmpl and b is None:
         raise ValueError(f"{operation}/{framing} needs a second operand b")
-    return tmpl.format(a=a, b=("" if b is None else b))
+    return prefix + tmpl.format(a=a, b=("" if b is None else b))
 
 
-def build_prompts(operation: str, framing: str, values, b: int | None = None) -> list[str]:
-    """Prompts for the full operand-`a` sweep (b fixed)."""
-    return [build_prompt(operation, framing, int(a), b) for a in values]
+def build_prompts(operation: str, framing: str, values, b: int | None = None,
+                  *, prefix: str = "") -> list[str]:
+    """Prompts for the full operand-`a` sweep (b fixed), with optional model prefix."""
+    return [build_prompt(operation, framing, int(a), b, prefix=prefix) for a in values]
 
 
 def _digit_positions(model, prompt: str) -> list[int]:
@@ -224,6 +231,35 @@ def read_token_index(model, prompt: str, read_token: str, operation: str,
     if len(pos) < 2:
         raise ValueError(f"no operand-b token found in {model.to_str_tokens(prompt)}")
     return pos[1]
+
+
+def single_token_number_grid(model, operation: str, framing: str, lo: int, hi: int,
+                             *, b: int | None = None) -> tuple[list[int], dict[int, int]]:
+    """Operand-`a` sweep grid for the number-representation scripts, validated against the
+    REAL prompt tokenization (the "more correct", model-agnostic replacement for the old
+    space-prefixed-only `models.number_token_ids`, which returned an empty grid on Llama-3).
+
+    Returns ``(values, id_map)`` where ``values`` is every integer ``n`` in ``[lo, hi]``
+    whose operand-`a` is exactly ONE token at the operand-`a` position of the prompt
+    ``build_prompt(operation, framing, n, b)`` (i.e. the first digit-bearing token equals
+    ``str(n)`` — same convention as `read_token_index`), and ``id_map[n]`` is that token's
+    in-context vocab id (the id to use for W_E embedding / W_U logit-lens of number ``n``).
+
+    Tokenizer-agnostic: it never assumes how a leading space attaches, because it tokenizes
+    the actual string. The caller applies ``repcli.contiguous_prefix`` for the even DFT grid.
+    """
+    values: list[int] = []
+    id_map: dict[int, int] = {}
+    for n in range(lo, hi + 1):
+        prompt = build_prompt(operation, framing, n, b)
+        str_toks = model.to_str_tokens(prompt)
+        ids = model.to_tokens(prompt)[0]
+        idx = next((i for i, t in enumerate(str_toks) if any(c.isdigit() for c in t)), None)
+        if idx is None or str_toks[idx].strip() != str(n):
+            continue  # operand absent or split across multiple tokens for this tokenizer
+        values.append(n)
+        id_map[n] = int(ids[idx].item())
+    return values, id_map
 
 
 def validate_read_token(read_token: str, operation: str, framing: str) -> None:

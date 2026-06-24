@@ -29,16 +29,44 @@ def load_model(key: str):
     return model
 
 
-def number_token_ids(model, lo: int = 0, hi: int = 999) -> dict[int, int]:
-    """Map integer n -> single-token id, for integers tokenized as ONE token.
+# --- model-agnostic number tokenization primitives -----------------------------
+# Single-token-ness of a number depends on the tokenizer AND on whether a leading space
+# attaches to the digits. GPT-2/GPT-J merge " 7" into one token; Llama-3 splits the space
+# off and tokenizes digit-runs of 1-3, so " 7" -> [" ", "7"] and the single token is the
+# bare "7". The old number_token_ids probed only the space-prefixed form and therefore
+# returned an EMPTY map on Llama-3. These helpers try both forms; the *operand-position*
+# grid (where context matters) lives in tasks.single_token_number_grid.
 
-    Many tokenizers split multi-digit numbers; we keep only those encoded as a
-    single token (the regime where the per-number residual stream is well defined).
-    A leading space is prepended because most BPE number tokens are space-prefixed.
-    """
-    out = {}
-    for n in range(lo, hi + 1):
-        toks = model.to_tokens(f" {n}", prepend_bos=False)[0]
+def single_token_id(model, n) -> int | None:
+    """Vocab id of integer `n` if it is ONE token, trying the space-prefixed form first
+    (GPT-2/GPT-J) then the bare form (Llama-3). None if neither is single-token."""
+    for form in (f" {n}", f"{n}"):
+        toks = model.to_tokens(form, prepend_bos=False)[0]
         if toks.shape[0] == 1:
-            out[n] = int(toks[0].item())
-    return out
+            return int(toks[0].item())
+    return None
+
+
+def first_answer_token_id(model, answer) -> int:
+    """First CONTENT (non-whitespace) token id of `answer` as emitted after a space.
+    Robust to tokenizers that merge the leading space into the first token (GPT-J:
+    ' 42'->[' 42']) and those that split it off (Llama-3: ' 42'->[' ','42'], where the
+    leading whitespace token is skipped so the digit token is returned)."""
+    str_toks = model.to_str_tokens(f" {answer}", prepend_bos=False)
+    ids = model.to_tokens(f" {answer}", prepend_bos=False)[0]
+    for t, i in zip(str_toks, ids):
+        if t.strip() != "":
+            return int(i.item())
+    return int(ids[0].item())
+
+
+def is_single_token_answer(model, answer) -> bool:
+    """True if `answer` is a single CONTENT token (ignoring a possible leading-space
+    token). Model-agnostic counterpart of the old ' {answer}'.shape==1 check."""
+    str_toks = model.to_str_tokens(f" {answer}", prepend_bos=False)
+    return sum(1 for t in str_toks if t.strip() != "") == 1
+
+
+def single_token_answer_id(model, answer) -> int | None:
+    """first_answer_token_id if the answer is a single content token, else None."""
+    return first_answer_token_id(model, answer) if is_single_token_answer(model, answer) else None
