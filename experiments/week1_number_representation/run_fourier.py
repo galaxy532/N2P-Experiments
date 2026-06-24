@@ -57,12 +57,16 @@ def main():
     ap.add_argument("--prefix", default=None,
                     help="model instruction prefix prepended to every prompt; default = "
                          "config ModelSpec.prompt_prefix for --model. Pass '' to ablate.")
+    ap.add_argument("--kshot", type=int, default=0,
+                    help="few-shot solved examples before the query (0 = zero-shot). GPT-J "
+                         "needs few-shot for read=sum; not needed for read=a (operand).")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
     model = models.load_model(args.model)
     prefix = args.prefix if args.prefix is not None else config.get_model_spec(args.model).prompt_prefix
-    print(f"[prefix] {prefix!r}")
+    shots = tasks.fewshot_shots(args.operation, args.kshot, args.seed)
+    print(f"[prefix] {prefix!r}  [kshot] {args.kshot}")
     # Operand grid validated against the real prompt (canonical symbolic framing; operand
     # single-token-ness is framing-independent). id_map -> in-context vocab id for W_E rows.
     grid_values, id_map = tasks.single_token_number_grid(model, args.operation, "symbolic",
@@ -78,7 +82,7 @@ def main():
                                "framing": None if args.summary else args.framing})
 
     if args.summary:
-        _run_summary(model, args, values, out, prefix)
+        _run_summary(model, args, values, out, prefix, shots)
         return
 
     if args.layer is None:
@@ -92,7 +96,7 @@ def main():
     else:
         tasks.validate_read_token(args.read_token, args.operation, args.framing)
         prompt_list = tasks.build_prompts(args.operation, args.framing, values, args.b_fixed,
-                                          prefix=prefix)
+                                          prefix=prefix, shots=shots)
         token_index = tasks.read_token_index(model, prompt_list[0], args.read_token,
                                              args.operation, args.framing)
         print(f"[{args.operation}/{args.framing}] read-token={args.read_token} at index "
@@ -120,7 +124,7 @@ def main():
           f"read={read_token})")
 
 
-def _run_summary(model, args, values, out, prefix=""):
+def _run_summary(model, args, values, out, prefix="", shots=()):
     """[zhou2024] Fig 3 for the residual stream: one panel per framing, each a
     layer x frequency heatmap (resid_post has no MLP/attn split)."""
     framings = repcli.framings_for_summary(args.operation, args.read_token)
@@ -135,7 +139,7 @@ def _run_summary(model, args, values, out, prefix=""):
     panels, freqs, dom_by_framing = [], None, {}
     for framing in framings:
         prompt_list = tasks.build_prompts(args.operation, framing, values, args.b_fixed,
-                                          prefix=prefix)
+                                          prefix=prefix, shots=shots)
         token_index = tasks.read_token_index(model, prompt_list[0], args.read_token,
                                              args.operation, framing)
         caches = cache_number_site_all_layers(model, prompt_list, hooks,

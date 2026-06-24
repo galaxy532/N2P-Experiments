@@ -47,26 +47,38 @@ def single_token_id(model, n) -> int | None:
     return None
 
 
-def first_answer_token_id(model, answer) -> int:
-    """First CONTENT (non-whitespace) token id of `answer` as emitted after a space.
-    Robust to tokenizers that merge the leading space into the first token (GPT-J:
-    ' 42'->[' 42']) and those that split it off (Llama-3: ' 42'->[' ','42'], where the
-    leading whitespace token is skipped so the digit token is returned)."""
-    str_toks = model.to_str_tokens(f" {answer}", prepend_bos=False)
-    ids = model.to_tokens(f" {answer}", prepend_bos=False)[0]
+def first_answer_token_id(model, answer, *, space: bool = True) -> int:
+    """First CONTENT (non-whitespace) token id of `answer`.
+
+    `space` selects which prompt FORMAT the answer is emitted in, because the right token
+    differs by format (probe-confirmed 2026-06-24):
+      - space=True  -> the answer follows a space (few-shot "= 42"). GPT-J emits the
+        space-merged token ' 42'; Llama emits [' ','42'] and the leading space is skipped.
+        Use for the accuracy probe.
+      - space=False -> the answer immediately follows "=" with NO space (zero-shot,
+        "{a}+{b}="). GPT-J emits the BARE '42'; Llama is identical (its space is always a
+        separate token). Use for the fixed-position logit reads in run_causal_validation /
+        run_te_de_probe, and matches [kantamneni2025]'s bare `tokenizer(f'{answer}')`.
+    """
+    s = f" {answer}" if space else f"{answer}"
+    str_toks = model.to_str_tokens(s, prepend_bos=False)
+    ids = model.to_tokens(s, prepend_bos=False)[0]
     for t, i in zip(str_toks, ids):
         if t.strip() != "":
             return int(i.item())
     return int(ids[0].item())
 
 
-def is_single_token_answer(model, answer) -> bool:
-    """True if `answer` is a single CONTENT token (ignoring a possible leading-space
-    token). Model-agnostic counterpart of the old ' {answer}'.shape==1 check."""
-    str_toks = model.to_str_tokens(f" {answer}", prepend_bos=False)
+def is_single_token_answer(model, answer, *, space: bool = True) -> bool:
+    """True if `answer` is a single CONTENT token in the chosen format (see
+    first_answer_token_id for the space= meaning)."""
+    s = f" {answer}" if space else f"{answer}"
+    str_toks = model.to_str_tokens(s, prepend_bos=False)
     return sum(1 for t in str_toks if t.strip() != "") == 1
 
 
-def single_token_answer_id(model, answer) -> int | None:
-    """first_answer_token_id if the answer is a single content token, else None."""
-    return first_answer_token_id(model, answer) if is_single_token_answer(model, answer) else None
+def single_token_answer_id(model, answer, *, space: bool = True) -> int | None:
+    """first_answer_token_id if the answer is a single content token (in the chosen
+    format), else None."""
+    return (first_answer_token_id(model, answer, space=space)
+            if is_single_token_answer(model, answer, space=space) else None)

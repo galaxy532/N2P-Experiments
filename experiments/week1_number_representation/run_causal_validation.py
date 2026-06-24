@@ -57,14 +57,16 @@ from n2p.number_repr import helix, repcli             # noqa: E402
 from n2p.number_repr import causal                    # noqa: E402
 
 
-# Answer-token helpers are the model-agnostic ones in n2p.models (they handle tokenizers
-# that split the leading space, e.g. Llama-3, where the old ' {answer}'[0] would have been
-# the space token). NB the logit-diff below reads the answer-NUMBER token logit at the
-# position right after "="; on Llama-3 the literally-next emitted token is a space, so for
-# Llama this is a "preference for number X over Y ignoring the space" diff, not the realized
-# next-token. CAVEAT flagged for the trailing-space decision before trusting Llama runs.
-first_token_id = models.first_answer_token_id
-is_single_token_answer = models.is_single_token_answer
+# Answer-token helpers (model-agnostic, in n2p.models). The prompt is zero-shot ending in
+# "=" with NO trailing space, so we read the BARE answer token (space=False): probe-confirmed
+# 2026-06-24, GPT-J emits the bare '99' there (not ' 99'), and Llama is identical (its space
+# is always a separate token). This matches [kantamneni2025]'s bare tokenizer(f'{answer}').
+def first_token_id(model, answer):
+    return models.first_answer_token_id(model, answer, space=False)
+
+
+def is_single_token_answer(model, answer):
+    return models.is_single_token_answer(model, answer, space=False)
 
 
 def resolve_layers(args, spec) -> list[int]:
@@ -79,12 +81,13 @@ def resolve_layers(args, spec) -> list[int]:
 
 
 def fit_helix_all_layers(model, operation, framing, values, b_fixed, layers, n_pca,
-                         pca_dims, prefix=""):
+                         pca_dims, prefix="", shots=()):
     """Fit the helix on the operand-a token at EVERY swept layer in one batched cache
     sweep, plus the PCA baselines. Returns {layer: {hook, fitres, site_mean, bases, pca,
-    r2}}. The operand-a index is constant across the sweep (fixed framing prefix +
-    single-token operands), so one token_index batches all prompts."""
-    prompts = tasks.build_prompts(operation, framing, values, b_fixed, prefix=prefix)
+    r2}}. The operand-a index is constant across the sweep (fixed prefix + fixed few-shot
+    shots + single-token operands), so one token_index batches all prompts."""
+    prompts = tasks.build_prompts(operation, framing, values, b_fixed, prefix=prefix,
+                                  shots=shots)
     ix = tasks.read_token_index(model, prompts[0], "a", operation, framing)
     hooks = [f"blocks.{L}.hook_resid_post" for L in layers]
     acts_by_hook = causal.cache_number_site_all_layers(model, prompts, hooks,
@@ -132,6 +135,10 @@ def main():
     ap.add_argument("--prefix", default=None,
                     help="model instruction prefix prepended to every prompt; default = "
                          "config ModelSpec.prompt_prefix for --model. Pass '' to ablate.")
+    ap.add_argument("--kshot", type=int, default=0,
+                    help="few-shot solved examples before each query (0 = zero-shot). GPT-J "
+                         "needs few-shot (e.g. 4) to actually answer — the logit-diff is "
+                         "meaningless if the clean run does not produce the answer.")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
@@ -139,7 +146,8 @@ def main():
     spec = config.get_model_spec(args.model)
     model = models.load_model(args.model)
     prefix = args.prefix if args.prefix is not None else spec.prompt_prefix
-    print(f"[prefix] {prefix!r}")
+    shots = tasks.fewshot_shots(args.operation, args.kshot, args.seed)
+    print(f"[prefix] {prefix!r}  [kshot] {args.kshot}")
     operation, framing = args.operation, args.framing
     layers = resolve_layers(args, spec)
     print(f"[setup] {operation}/{framing}; layers={layers[0]}..{layers[-1]} "
@@ -158,7 +166,7 @@ def main():
     # --- 1. fit helix (+ PCA baselines) at every swept layer ---
     per_layer, _ = fit_helix_all_layers(model, operation, framing, fit_values,
                                         args.b_fixed, layers, args.n_pca, args.pca_dims,
-                                        prefix=prefix)
+                                        prefix=prefix, shots=shots)
     pca_keys = sorted({k for L in layers for k in per_layer[L]["pca"]})
     helix_keys = ["helix_full", "helix_magnitude", "helix_modular"]
     methods = helix_keys + [f"pca{k}" for k in pca_keys] + ["full_layer", "noop"]
@@ -191,8 +199,8 @@ def main():
         if fa == fap:                                     # logit-diff would be ~0
             continue
         ans = (fa, fap)
-        clean = tasks.build_prompt(operation, framing, a, b, prefix=prefix)
-        donor = tasks.build_prompt(operation, framing, ap_, b, prefix=prefix)
+        clean = tasks.build_prompt(operation, framing, a, b, prefix=prefix, shots=shots)
+        donor = tasks.build_prompt(operation, framing, ap_, b, prefix=prefix, shots=shots)
         ix = tasks.read_token_index(model, clean, "a", operation, framing)
         donor_ix = tasks.read_token_index(model, donor, "a", operation, framing)
         hooks = [per_layer[L]["hook"] for L in layers]
@@ -241,6 +249,7 @@ def main():
     summary = {
         "model": args.model, "hf_id": spec.hf_id, "operation": operation,
         "framing": framing, "read_token": "a", "layers": layers, "prefix": prefix,
+        "kshot": args.kshot,
         "n_pca": args.n_pca, "pca_dims": pca_keys, "n_test": len(triples),
         "frac_single_token_answers": round(n_single / max(len(triples), 1), 3),
         "helix_ranks": {n: int(b.shape[1])
@@ -259,7 +268,7 @@ def main():
                          label=f"run_causal_validation/{operation}",
                          meta={"script": "run_causal_validation.py", "operation": operation,
                                "framing": framing, "read_token": "a", "layers": layers,
-                               "prefix": prefix})
+                               "prefix": prefix, "kshot": args.kshot})
     (out / f"causal_validation.{framing}.json").write_text(
         json.dumps({"summary": summary, "trials": triples}, indent=2))
     _plot(per_layer_summary, methods, out / f"causal_by_layer.{framing}.png",

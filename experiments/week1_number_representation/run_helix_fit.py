@@ -33,7 +33,9 @@ def _fit_one_framing(model, spec, operation, framing, values, args):
         print(f"[skip] {operation}/{framing}: --read-token b invalid (no operand b)")
         return None
     prefix = args.prefix if args.prefix is not None else spec.prompt_prefix
-    prompt_list = tasks.build_prompts(operation, framing, values, args.b_fixed, prefix=prefix)
+    shots = tasks.fewshot_shots(operation, args.kshot, args.seed)
+    prompt_list = tasks.build_prompts(operation, framing, values, args.b_fixed,
+                                      prefix=prefix, shots=shots)
     token_index = tasks.read_token_index(model, prompt_list[0], args.read_token,
                                          operation, framing)
     print(f"[{operation}/{framing}] read-token={args.read_token} at index {token_index}; "
@@ -71,13 +73,17 @@ def main():
     ap.add_argument("--prefix", default=None,
                     help="model instruction prefix prepended to every prompt; default = "
                          "config ModelSpec.prompt_prefix for --model. Pass '' to ablate.")
+    ap.add_argument("--kshot", type=int, default=0,
+                    help="few-shot solved examples prepended before the query (0 = zero-shot). "
+                         "GPT-J needs few-shot (e.g. 4) to reliably perform; only matters for "
+                         "read=sum (answer site), not read=a (operand site).")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
     spec = config.get_model_spec(args.model)
     model = models.load_model(args.model)
     prefix = args.prefix if args.prefix is not None else spec.prompt_prefix
-    print(f"[prefix] {prefix!r}")
+    print(f"[prefix] {prefix!r}  [kshot] {args.kshot}")
 
     # Operand grid validated against the real prompt (symbolic framing as the canonical
     # surface form); contiguous prefix keeps the even grid the helix/DFT expect.
@@ -89,7 +95,8 @@ def main():
                          model=args.model,
                          label=f"run_helix_fit/{args.operation}",
                          meta={"script": "run_helix_fit.py", "operation": args.operation,
-                               "read_token": args.read_token, "prefix": prefix})
+                               "read_token": args.read_token, "prefix": prefix,
+                               "kshot": args.kshot})
 
     by_framing = {}
     for framing in tasks.FRAMING_NAMES:
@@ -108,6 +115,7 @@ def main():
         "model": args.model, "hf_id": spec.hf_id, "operation": args.operation,
         "n_numbers": len(values), "value_range": [int(values[0]), int(values[-1])],
         "n_pca": args.n_pca, "read_token": args.read_token, "prefix": prefix,
+        "kshot": args.kshot,
         "b_fixed": args.b_fixed, "expected_build_layers": list(spec.build_layers),
         "per_framing": {
             f: {"per_layer": pl,

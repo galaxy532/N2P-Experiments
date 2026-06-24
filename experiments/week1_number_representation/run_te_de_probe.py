@@ -51,9 +51,11 @@ def operand_a_index(model, prompt):
     raise ValueError(f"could not locate operand a in {model.to_str_tokens(prompt)}")
 
 
-# Model-agnostic single-token answer id (handles tokenizers that split the leading space,
-# e.g. Llama-3; the old ' {n}'.shape==1 check returned None for every answer there).
-single_token_answer_id = models.single_token_answer_id
+# Model-agnostic single-token answer id. Prompts are zero-shot "{a}+{b}=" (no trailing
+# space), so read the BARE answer token (space=False) — GPT-J emits bare '99' there, Llama
+# identical. Matches [kantamneni2025]; see models.first_answer_token_id.
+def single_token_answer_id(model, n):
+    return models.single_token_answer_id(model, n, space=False)
 
 
 def main():

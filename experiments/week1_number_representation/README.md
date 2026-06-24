@@ -55,6 +55,19 @@ each `summary`. The prefix is **digit-free**, so operand indexing (first digit-b
 **NB:** runs recorded before 2026-06-24 have **no** prefix — they are superseded; re-run the
 helix/Fourier sweeps under the prefix before comparing.
 
+**Few-shot (`--kshot`, default 0 = zero-shot).** Prepends `k` fixed solved examples (seeded)
+before the query. **GPT-J needs few-shot** (e.g. `--kshot 4`) to actually compute the answer
+— zero-shot it often just echoes the prompt (probe-confirmed). Few-shot is *required for
+validity* at the **read=sum** site and in `run_causal_validation` (no answer → no signal).
+For **read=a** (operand) it is *not required* — the operand token encodes its value whether
+or not the model answers, and the paper fits the operand helix zero-shot — **but it is not a
+no-op**: the operand residual is computed with attention over the shots, so it is
+contextualized by them (more so at the deeper/build layers). For a single consistent prompt
+regime, run **all** GPT-J work at the same `--kshot`; use zero-shot read=a only if you
+deliberately want the pretrained operand encoding in isolation. Operands are located in the
+query line (after the last newline), so example digits never confuse the read-token index.
+Llama performs zero-shot, so `--kshot 0` is fine for it.
+
 ```bash
 python experiments/week1_number_representation/run_helix_fit.py        --model gptj                                       # operation=addition, 3 framings as panels
 python experiments/week1_number_representation/run_fourier.py          --model gptj                                       # embeddings (activation space)
@@ -162,16 +175,16 @@ freezes every component, so it is ~`2*n_layers*n_test` patched forwards — rest
   — fixed 2026-06-23). The usable range still differs per model; `contiguous_prefix` keeps
   the even grid the DFT/helix expect.
 - `run_causal_validation` requires single-token **operands** (the patch site is one token),
-  but answers are scored on their **first content token** (`models.first_answer_token_id`),
-  so multi-token answers (e.g. multiplication) are admissible — as a leading-digit/magnitude
-  test, not full-value (`frac_single_token_answers` flags how often it is exact;
-  modular/small-addition are exact). Triples whose two answers share a first token are
-  skipped (the logit-diff would be ~0 by construction). **CAVEAT (Llama-3):** the answer
-  logit is read at the position right after `=`, but Llama emits a *space* there before the
-  digits, so the first-token logit-diff is a "prefer number X over Y, ignoring the space"
-  quantity rather than the realized next token. Decide the trailing-space handling (append a
-  space to the prompt, or score one position later) before trusting Llama causal runs — this
-  is a design choice, not yet made.
+  but answers are scored on their **first content token**, read as the **BARE** answer token
+  (`models.first_answer_token_id(..., space=False)`). The prompt is zero-shot ending in `=`
+  with no trailing space; the probe (`probe_answer_token_space.py`, 2026-06-24) confirmed
+  GPT-J emits the bare `99` there (not `␣99`) and Llama is identical (its space is always a
+  separate token), so bare is correct for both — matching [kantamneni2025]'s bare
+  `tokenizer(f'{answer}')`. Multi-token answers (e.g. multiplication) are admissible as a
+  leading-digit/magnitude test (`frac_single_token_answers` flags exactness). Triples whose
+  two answers share a first token are skipped (logit-diff ~0 by construction). NB GPT-J needs
+  **few-shot** to do the task reliably (zero-shot it often echoes the prompt); the answer/sum
+  sites and causal runs assume the model actually computes — operand (read=a) runs do not.
 - For Llama-3-8B, `build_layers` in `config.py` is a placeholder — set it from the
   `run_helix_fit` sweep before running causal validation with the default layer.
 - In word/wordproblem framings the operand `a` may not be at the first content position;

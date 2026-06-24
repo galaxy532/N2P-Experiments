@@ -182,29 +182,54 @@ def template_has_b(operation: str, framing: str) -> bool:
 
 
 # --- prompt construction + read-token selection (was number_repr/prompts.py) ----
+def fewshot_shots(operation: str, kshot: int, seed: int = 0):
+    """`kshot` solved (a, b, answer) example tuples for few-shot context, deterministic by
+    `seed` (drawn from the task's operand ranges; answer = task.fn). Empty if kshot <= 0."""
+    if kshot <= 0:
+        return ()
+    task = get_task(operation)
+    return tuple((d["a"], d["b"], d["answer"]) for d in task.sample(kshot, seed=seed))
+
+
 def build_prompt(operation: str, framing: str, a: int, b: int | None = None,
-                 *, prefix: str = "") -> str:
+                 *, prefix: str = "", shots=()) -> str:
     """Build one prompt for operand value `a` (and fixed `b` if the framing uses it).
 
-    `prefix` is the model-specific zero-shot instruction (config.ModelSpec.prompt_prefix);
-    it is prepended verbatim. It MUST be digit-free so operand indexing (first digit-bearing
-    token = operand a) is unaffected — config's prefixes satisfy this.
+    Layout: ``prefix`` (model instruction) + ``shots`` solved example lines + the query line,
+    joined by newlines. `prefix` is the model-specific instruction (config.ModelSpec.
+    prompt_prefix); `shots` is an iterable of (a, b, answer) tuples (see fewshot_shots) — each
+    rendered as ``<framing> <answer>``. With no shots and a single-line framing this is just
+    ``prefix + query`` (unchanged). The prefix MUST be digit-free; operands are located in the
+    QUERY line (after the last newline — see _digit_positions) so example digits are skipped.
     """
     tmpl = framing_template(operation, framing)
     if "{b}" in tmpl and b is None:
         raise ValueError(f"{operation}/{framing} needs a second operand b")
-    return prefix + tmpl.format(a=a, b=("" if b is None else b))
+    lines = [tmpl.format(a=sa, b=("" if sb is None else sb)) + f" {sans}"
+             for (sa, sb, sans) in shots]
+    lines.append(tmpl.format(a=a, b=("" if b is None else b)))
+    return prefix + "\n".join(lines)
 
 
 def build_prompts(operation: str, framing: str, values, b: int | None = None,
-                  *, prefix: str = "") -> list[str]:
-    """Prompts for the full operand-`a` sweep (b fixed), with optional model prefix."""
-    return [build_prompt(operation, framing, int(a), b, prefix=prefix) for a in values]
+                  *, prefix: str = "", shots=()) -> list[str]:
+    """Prompts for the full operand-`a` sweep (b fixed), with optional model prefix and
+    fixed few-shot `shots` (same examples across the sweep, so only the query operand varies)."""
+    return [build_prompt(operation, framing, int(a), b, prefix=prefix, shots=shots)
+            for a in values]
 
 
 def _digit_positions(model, prompt: str) -> list[int]:
-    return [i for i, t in enumerate(model.to_str_tokens(prompt))
-            if any(c.isdigit() for c in t)]
+    """Digit-bearing token positions in the QUERY line — i.e. AFTER the last newline-bearing
+    token. Few-shot example lines and any instruction prefix precede the query and are
+    separated from it by '\\n', so their digits (example operands/answers) are skipped. For a
+    single-line prompt with no newline this is the whole prompt (unchanged behavior)."""
+    toks = model.to_str_tokens(prompt)
+    start = 0
+    for i, t in enumerate(toks):
+        if "\n" in t:
+            start = i + 1
+    return [i for i in range(start, len(toks)) if any(c.isdigit() for c in toks[i])]
 
 
 def read_token_index(model, prompt: str, read_token: str, operation: str,
