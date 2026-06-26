@@ -9,6 +9,8 @@
   ],
   "n_pca": 9,
   "read_token": "a",
+  "prefix": "Output ONLY a number.\n",
+  "kshot": 0,
   "b_fixed": 5,
   "expected_build_layers": [
     14,
@@ -19,171 +21,171 @@
       "per_layer": [
         {
           "layer": 0,
-          "helix_r2": 0.6891461888153688,
-          "poly_baseline_r2": 0.7346591281500856,
-          "helix_minus_baseline": -0.045512939334716784
+          "helix_r2": 0.6960658064957048,
+          "poly_baseline_r2": 0.7373138752893049,
+          "helix_minus_baseline": -0.0412480687936001
         },
         {
           "layer": 1,
-          "helix_r2": 0.7096210511877619,
-          "poly_baseline_r2": 0.7607643647232052,
-          "helix_minus_baseline": -0.051143313535443324
+          "helix_r2": 0.7197496808971351,
+          "poly_baseline_r2": 0.7719211567305577,
+          "helix_minus_baseline": -0.05217147583342263
         },
         {
           "layer": 2,
-          "helix_r2": 0.7032572111105415,
-          "poly_baseline_r2": 0.771915552929731,
-          "helix_minus_baseline": -0.0686583418191895
+          "helix_r2": 0.711927228280604,
+          "poly_baseline_r2": 0.7692486105865485,
+          "helix_minus_baseline": -0.057321382305944524
         },
         {
           "layer": 3,
-          "helix_r2": 0.7017144906954602,
-          "poly_baseline_r2": 0.7801014128814896,
-          "helix_minus_baseline": -0.07838692218602938
+          "helix_r2": 0.7129591415938126,
+          "poly_baseline_r2": 0.7743904991519739,
+          "helix_minus_baseline": -0.061431357558161315
         },
         {
           "layer": 4,
-          "helix_r2": 0.6985578984055694,
-          "poly_baseline_r2": 0.7804036993865452,
-          "helix_minus_baseline": -0.08184580098097582
+          "helix_r2": 0.7091984015895004,
+          "poly_baseline_r2": 0.7718125415930119,
+          "helix_minus_baseline": -0.06261414000351151
         },
         {
           "layer": 5,
-          "helix_r2": 0.7017672919385758,
-          "poly_baseline_r2": 0.762648240368546,
-          "helix_minus_baseline": -0.06088094842997016
+          "helix_r2": 0.703084638759709,
+          "poly_baseline_r2": 0.7510319744923427,
+          "helix_minus_baseline": -0.04794733573263377
         },
         {
           "layer": 6,
-          "helix_r2": 0.6982912192460013,
-          "poly_baseline_r2": 0.7741239681298785,
-          "helix_minus_baseline": -0.07583274888387714
+          "helix_r2": 0.6943897821775489,
+          "poly_baseline_r2": 0.7634967185339215,
+          "helix_minus_baseline": -0.06910693635637266
         },
         {
           "layer": 7,
-          "helix_r2": 0.6992907745585568,
-          "poly_baseline_r2": 0.7544943230680307,
-          "helix_minus_baseline": -0.05520354850947384
+          "helix_r2": 0.6838198920138919,
+          "poly_baseline_r2": 0.7346076108195183,
+          "helix_minus_baseline": -0.05078771880562638
         },
         {
           "layer": 8,
-          "helix_r2": 0.6849344327145048,
-          "poly_baseline_r2": 0.75457991307546,
-          "helix_minus_baseline": -0.06964548036095519
+          "helix_r2": 0.6527601097416009,
+          "poly_baseline_r2": 0.7208732846710653,
+          "helix_minus_baseline": -0.06811317492946434
         },
         {
           "layer": 9,
-          "helix_r2": 0.6858054218930199,
-          "poly_baseline_r2": 0.7399579333910733,
-          "helix_minus_baseline": -0.054152511498053446
+          "helix_r2": 0.6615356596363449,
+          "poly_baseline_r2": 0.6936501935417598,
+          "helix_minus_baseline": -0.032114533905414966
         },
         {
           "layer": 10,
-          "helix_r2": 0.6841800060386649,
-          "poly_baseline_r2": 0.7374952175576968,
-          "helix_minus_baseline": -0.053315211519031847
+          "helix_r2": 0.66021176598103,
+          "poly_baseline_r2": 0.6889906888200974,
+          "helix_minus_baseline": -0.028778922839067356
         },
         {
           "layer": 11,
-          "helix_r2": 0.6837248928233353,
-          "poly_baseline_r2": 0.7150014439994408,
-          "helix_minus_baseline": -0.031276551176105505
+          "helix_r2": 0.6549360945642329,
+          "poly_baseline_r2": 0.6608890287711587,
+          "helix_minus_baseline": -0.005952934206925886
         },
         {
           "layer": 12,
-          "helix_r2": 0.6874707780659479,
-          "poly_baseline_r2": 0.7081190721667736,
-          "helix_minus_baseline": -0.020648294100825693
+          "helix_r2": 0.6585927280356185,
+          "poly_baseline_r2": 0.6442052083275087,
+          "helix_minus_baseline": 0.014387519708109808
         },
         {
           "layer": 13,
-          "helix_r2": 0.6766469065987013,
-          "poly_baseline_r2": 0.6969821864213634,
-          "helix_minus_baseline": -0.020335279822662145
+          "helix_r2": 0.6489462287455454,
+          "poly_baseline_r2": 0.6363863870374042,
+          "helix_minus_baseline": 0.012559841708141173
         },
         {
           "layer": 14,
-          "helix_r2": 0.681812144252719,
-          "poly_baseline_r2": 0.67510595262929,
-          "helix_minus_baseline": 0.006706191623429003
+          "helix_r2": 0.6572349326819361,
+          "poly_baseline_r2": 0.6187672614048878,
+          "helix_minus_baseline": 0.03846767127704831
         },
         {
           "layer": 15,
-          "helix_r2": 0.6826238614794053,
-          "poly_baseline_r2": 0.664858708238306,
-          "helix_minus_baseline": 0.017765153241099396
+          "helix_r2": 0.660094505066559,
+          "poly_baseline_r2": 0.599113465190909,
+          "helix_minus_baseline": 0.060981039875649956
         },
         {
           "layer": 16,
-          "helix_r2": 0.6850753533391007,
-          "poly_baseline_r2": 0.6351720784806858,
-          "helix_minus_baseline": 0.04990327485841495
+          "helix_r2": 0.6777531881547016,
+          "poly_baseline_r2": 0.5497567785574228,
+          "helix_minus_baseline": 0.12799640959727887
         },
         {
           "layer": 17,
-          "helix_r2": 0.6854867950857593,
-          "poly_baseline_r2": 0.6228039517488813,
-          "helix_minus_baseline": 0.06268284333687801
+          "helix_r2": 0.6787838897297744,
+          "poly_baseline_r2": 0.5446017367077396,
+          "helix_minus_baseline": 0.13418215302203484
         },
         {
           "layer": 18,
-          "helix_r2": 0.6861277282301511,
-          "poly_baseline_r2": 0.6122771819293394,
-          "helix_minus_baseline": 0.07385054630081167
+          "helix_r2": 0.6776845554892288,
+          "poly_baseline_r2": 0.5378688550335298,
+          "helix_minus_baseline": 0.13981570045569902
         },
         {
           "layer": 19,
-          "helix_r2": 0.6749125327118077,
-          "poly_baseline_r2": 0.6114242358360522,
-          "helix_minus_baseline": 0.06348829687575552
+          "helix_r2": 0.6615760758065403,
+          "poly_baseline_r2": 0.5361786176502772,
+          "helix_minus_baseline": 0.12539745815626313
         },
         {
           "layer": 20,
-          "helix_r2": 0.6726319004361161,
-          "poly_baseline_r2": 0.6061012872697381,
-          "helix_minus_baseline": 0.06653061316637798
+          "helix_r2": 0.6600822596987557,
+          "poly_baseline_r2": 0.5247244346260413,
+          "helix_minus_baseline": 0.13535782507271432
         },
         {
           "layer": 21,
-          "helix_r2": 0.663693462020758,
-          "poly_baseline_r2": 0.5973287360242105,
-          "helix_minus_baseline": 0.06636472599654741
+          "helix_r2": 0.6555437333272193,
+          "poly_baseline_r2": 0.5169035739724153,
+          "helix_minus_baseline": 0.138640159354804
         },
         {
           "layer": 22,
-          "helix_r2": 0.6567097190576272,
-          "poly_baseline_r2": 0.5906504596565842,
-          "helix_minus_baseline": 0.06605925940104296
+          "helix_r2": 0.650620689987111,
+          "poly_baseline_r2": 0.5152861952041548,
+          "helix_minus_baseline": 0.13533449478295623
         },
         {
           "layer": 23,
-          "helix_r2": 0.6543956834362885,
-          "poly_baseline_r2": 0.5860028996541737,
-          "helix_minus_baseline": 0.06839278378211477
+          "helix_r2": 0.644598588960109,
+          "poly_baseline_r2": 0.5130772359244766,
+          "helix_minus_baseline": 0.1315213530356324
         },
         {
           "layer": 24,
-          "helix_r2": 0.6482866991739209,
-          "poly_baseline_r2": 0.5807314408764565,
-          "helix_minus_baseline": 0.06755525829746445
+          "helix_r2": 0.6355336339026935,
+          "poly_baseline_r2": 0.5049128368241564,
+          "helix_minus_baseline": 0.13062079707853702
         },
         {
           "layer": 25,
-          "helix_r2": 0.6404321692075656,
-          "poly_baseline_r2": 0.572824726567656,
-          "helix_minus_baseline": 0.06760744263990959
+          "helix_r2": 0.6239741405900945,
+          "poly_baseline_r2": 0.5010203804240352,
+          "helix_minus_baseline": 0.1229537601660593
         },
         {
           "layer": 26,
-          "helix_r2": 0.636338268972667,
-          "poly_baseline_r2": 0.5688759437081169,
-          "helix_minus_baseline": 0.0674623252645501
+          "helix_r2": 0.6131064199954392,
+          "poly_baseline_r2": 0.49172718780071845,
+          "helix_minus_baseline": 0.1213792321947208
         },
         {
           "layer": 27,
-          "helix_r2": 0.6124216401012588,
-          "poly_baseline_r2": 0.5531015499817795,
-          "helix_minus_baseline": 0.05932009011947925
+          "helix_r2": 0.5663564150879302,
+          "poly_baseline_r2": 0.4419107305026655,
+          "helix_minus_baseline": 0.12444568458526473
         }
       ],
       "best_layer": 18
@@ -192,347 +194,347 @@
       "per_layer": [
         {
           "layer": 0,
-          "helix_r2": 0.7169524253945939,
-          "poly_baseline_r2": 0.7142742671081002,
-          "helix_minus_baseline": 0.002678158286493759
+          "helix_r2": 0.7059155085057695,
+          "poly_baseline_r2": 0.7199776644985003,
+          "helix_minus_baseline": -0.014062155992730863
         },
         {
           "layer": 1,
-          "helix_r2": 0.7250753947602684,
-          "poly_baseline_r2": 0.7758408131143562,
-          "helix_minus_baseline": -0.050765418354087766
+          "helix_r2": 0.7195807899081645,
+          "poly_baseline_r2": 0.7856734658075479,
+          "helix_minus_baseline": -0.06609267589938339
         },
         {
           "layer": 2,
-          "helix_r2": 0.7165544503184855,
-          "poly_baseline_r2": 0.7857690195043576,
-          "helix_minus_baseline": -0.0692145691858721
+          "helix_r2": 0.7192931013147698,
+          "poly_baseline_r2": 0.7863418137928262,
+          "helix_minus_baseline": -0.06704871247805644
         },
         {
           "layer": 3,
-          "helix_r2": 0.7133372590019453,
-          "poly_baseline_r2": 0.7977897711516709,
-          "helix_minus_baseline": -0.0844525121497256
+          "helix_r2": 0.7191151120819455,
+          "poly_baseline_r2": 0.7954542049673031,
+          "helix_minus_baseline": -0.07633909288535767
         },
         {
           "layer": 4,
-          "helix_r2": 0.7152298865850837,
-          "poly_baseline_r2": 0.8095614226593133,
-          "helix_minus_baseline": -0.09433153607422962
+          "helix_r2": 0.7154407769064738,
+          "poly_baseline_r2": 0.7990112347050493,
+          "helix_minus_baseline": -0.08357045779857553
         },
         {
           "layer": 5,
-          "helix_r2": 0.7121732091888944,
-          "poly_baseline_r2": 0.7974746857521484,
-          "helix_minus_baseline": -0.08530147656325404
+          "helix_r2": 0.7127793371614524,
+          "poly_baseline_r2": 0.7831964955111382,
+          "helix_minus_baseline": -0.07041715834968587
         },
         {
           "layer": 6,
-          "helix_r2": 0.7140270357927279,
-          "poly_baseline_r2": 0.819821783196101,
-          "helix_minus_baseline": -0.10579474740337313
+          "helix_r2": 0.7167963852474784,
+          "poly_baseline_r2": 0.78937681135852,
+          "helix_minus_baseline": -0.07258042611104165
         },
         {
           "layer": 7,
-          "helix_r2": 0.7179352543139683,
-          "poly_baseline_r2": 0.8199852907289349,
-          "helix_minus_baseline": -0.10205003641496657
+          "helix_r2": 0.7257855928667527,
+          "poly_baseline_r2": 0.7677599996394295,
+          "helix_minus_baseline": -0.04197440677267683
         },
         {
           "layer": 8,
-          "helix_r2": 0.7192275298780098,
-          "poly_baseline_r2": 0.8226750995596148,
-          "helix_minus_baseline": -0.10344756968160507
+          "helix_r2": 0.710243324898596,
+          "poly_baseline_r2": 0.7771873037989818,
+          "helix_minus_baseline": -0.06694397890038584
         },
         {
           "layer": 9,
-          "helix_r2": 0.7191106371474791,
-          "poly_baseline_r2": 0.8292812642156092,
-          "helix_minus_baseline": -0.11017062706813008
+          "helix_r2": 0.7054552382607553,
+          "poly_baseline_r2": 0.755158693669971,
+          "helix_minus_baseline": -0.049703455409215724
         },
         {
           "layer": 10,
-          "helix_r2": 0.7241223590357934,
-          "poly_baseline_r2": 0.8241675550752494,
-          "helix_minus_baseline": -0.10004519603945605
+          "helix_r2": 0.7070201662377129,
+          "poly_baseline_r2": 0.7486360586492978,
+          "helix_minus_baseline": -0.04161589241158492
         },
         {
           "layer": 11,
-          "helix_r2": 0.7146172341903175,
-          "poly_baseline_r2": 0.784089672172755,
-          "helix_minus_baseline": -0.06947243798243752
+          "helix_r2": 0.7063909147784887,
+          "poly_baseline_r2": 0.6806723774449371,
+          "helix_minus_baseline": 0.02571853733355156
         },
         {
           "layer": 12,
-          "helix_r2": 0.7279606837651414,
-          "poly_baseline_r2": 0.7827962856284085,
-          "helix_minus_baseline": -0.05483560186326708
+          "helix_r2": 0.7336040786776364,
+          "poly_baseline_r2": 0.6551018913993713,
+          "helix_minus_baseline": 0.07850218727826519
         },
         {
           "layer": 13,
-          "helix_r2": 0.7173425927442947,
-          "poly_baseline_r2": 0.7841199344991383,
-          "helix_minus_baseline": -0.06677734175484362
+          "helix_r2": 0.7209125343201155,
+          "poly_baseline_r2": 0.6516379913246546,
+          "helix_minus_baseline": 0.06927454299546087
         },
         {
           "layer": 14,
-          "helix_r2": 0.721545150348575,
-          "poly_baseline_r2": 0.7782788379088859,
-          "helix_minus_baseline": -0.05673368756031083
+          "helix_r2": 0.72256319147125,
+          "poly_baseline_r2": 0.6410346488424998,
+          "helix_minus_baseline": 0.0815285426287502
         },
         {
           "layer": 15,
-          "helix_r2": 0.7208839271278527,
-          "poly_baseline_r2": 0.7732476886807274,
-          "helix_minus_baseline": -0.0523637615528747
+          "helix_r2": 0.7157295225221376,
+          "poly_baseline_r2": 0.6221772050223067,
+          "helix_minus_baseline": 0.09355231749983095
         },
         {
           "layer": 16,
-          "helix_r2": 0.7185517749931991,
-          "poly_baseline_r2": 0.7551999173681486,
-          "helix_minus_baseline": -0.03664814237494951
+          "helix_r2": 0.7156719436024621,
+          "poly_baseline_r2": 0.5961565040677248,
+          "helix_minus_baseline": 0.11951543953473731
         },
         {
           "layer": 17,
-          "helix_r2": 0.7354595409774092,
-          "poly_baseline_r2": 0.7318112511887855,
-          "helix_minus_baseline": 0.0036482897886236376
+          "helix_r2": 0.7165819273472676,
+          "poly_baseline_r2": 0.5881258132407625,
+          "helix_minus_baseline": 0.12845611410650504
         },
         {
           "layer": 18,
-          "helix_r2": 0.7389204058626124,
-          "poly_baseline_r2": 0.7178775932804238,
-          "helix_minus_baseline": 0.021042812582188652
+          "helix_r2": 0.7118372098798106,
+          "poly_baseline_r2": 0.5839665169176684,
+          "helix_minus_baseline": 0.12787069296214215
         },
         {
           "layer": 19,
-          "helix_r2": 0.7353534657666851,
-          "poly_baseline_r2": 0.7144060238514394,
-          "helix_minus_baseline": 0.02094744191524578
+          "helix_r2": 0.7083288735063542,
+          "poly_baseline_r2": 0.5734379314766247,
+          "helix_minus_baseline": 0.1348909420297295
         },
         {
           "layer": 20,
-          "helix_r2": 0.7281479602803165,
-          "poly_baseline_r2": 0.7110139833429715,
-          "helix_minus_baseline": 0.017133976937344975
+          "helix_r2": 0.6990452416434711,
+          "poly_baseline_r2": 0.5584599002207356,
+          "helix_minus_baseline": 0.1405853414227356
         },
         {
           "layer": 21,
-          "helix_r2": 0.7257207515468194,
-          "poly_baseline_r2": 0.7034774451702329,
-          "helix_minus_baseline": 0.022243306376586447
+          "helix_r2": 0.6965410063894724,
+          "poly_baseline_r2": 0.548761908329032,
+          "helix_minus_baseline": 0.14777909806044032
         },
         {
           "layer": 22,
-          "helix_r2": 0.7220694747869943,
-          "poly_baseline_r2": 0.7002811654812495,
-          "helix_minus_baseline": 0.021788309305744824
+          "helix_r2": 0.6912304900519162,
+          "poly_baseline_r2": 0.5437965071212951,
+          "helix_minus_baseline": 0.14743398293062104
         },
         {
           "layer": 23,
-          "helix_r2": 0.7142702332685222,
-          "poly_baseline_r2": 0.6886957702297094,
-          "helix_minus_baseline": 0.025574463038812834
+          "helix_r2": 0.6849688728723684,
+          "poly_baseline_r2": 0.5357511988174388,
+          "helix_minus_baseline": 0.14921767405492958
         },
         {
           "layer": 24,
-          "helix_r2": 0.7111631073141564,
-          "poly_baseline_r2": 0.6833470602437299,
-          "helix_minus_baseline": 0.02781604707042651
+          "helix_r2": 0.6788165508967404,
+          "poly_baseline_r2": 0.5269766872497106,
+          "helix_minus_baseline": 0.15183986364702984
         },
         {
           "layer": 25,
-          "helix_r2": 0.7102357876976688,
-          "poly_baseline_r2": 0.6784600467475779,
-          "helix_minus_baseline": 0.03177574095009095
+          "helix_r2": 0.6728777857149257,
+          "poly_baseline_r2": 0.5196548850876002,
+          "helix_minus_baseline": 0.15322290062732558
         },
         {
           "layer": 26,
-          "helix_r2": 0.7081388707441978,
-          "poly_baseline_r2": 0.6828478603549337,
-          "helix_minus_baseline": 0.025291010389264068
+          "helix_r2": 0.6666389642051911,
+          "poly_baseline_r2": 0.5119114488845911,
+          "helix_minus_baseline": 0.15472751532060003
         },
         {
           "layer": 27,
-          "helix_r2": 0.7021116678441004,
-          "poly_baseline_r2": 0.681942450704492,
-          "helix_minus_baseline": 0.020169217139608397
+          "helix_r2": 0.651922549724365,
+          "poly_baseline_r2": 0.4965219548461882,
+          "helix_minus_baseline": 0.1554005948781768
         }
       ],
-      "best_layer": 25
+      "best_layer": 27
     },
     "wordproblem": {
       "per_layer": [
         {
           "layer": 0,
-          "helix_r2": 0.6939516627575599,
-          "poly_baseline_r2": 0.7356475290090285,
-          "helix_minus_baseline": -0.041695866251468594
+          "helix_r2": 0.6970121065294275,
+          "poly_baseline_r2": 0.7370832426049718,
+          "helix_minus_baseline": -0.040071136075544356
         },
         {
           "layer": 1,
-          "helix_r2": 0.7172921811306543,
-          "poly_baseline_r2": 0.7796681929940023,
-          "helix_minus_baseline": -0.06237601186334796
+          "helix_r2": 0.7229325447169916,
+          "poly_baseline_r2": 0.7835799739161906,
+          "helix_minus_baseline": -0.060647429199198966
         },
         {
           "layer": 2,
-          "helix_r2": 0.7177950769435157,
-          "poly_baseline_r2": 0.7940824692428133,
-          "helix_minus_baseline": -0.0762873922992976
+          "helix_r2": 0.7211749013174292,
+          "poly_baseline_r2": 0.7876268956567842,
+          "helix_minus_baseline": -0.066451994339355
         },
         {
           "layer": 3,
-          "helix_r2": 0.718693376215843,
-          "poly_baseline_r2": 0.8039902253786739,
-          "helix_minus_baseline": -0.08529684916283098
+          "helix_r2": 0.7239546642859108,
+          "poly_baseline_r2": 0.7955987141281916,
+          "helix_minus_baseline": -0.07164404984228079
         },
         {
           "layer": 4,
-          "helix_r2": 0.7219189121955406,
-          "poly_baseline_r2": 0.8076209567407977,
-          "helix_minus_baseline": -0.0857020445452571
+          "helix_r2": 0.7245991888719083,
+          "poly_baseline_r2": 0.7978206145066761,
+          "helix_minus_baseline": -0.07322142563476775
         },
         {
           "layer": 5,
-          "helix_r2": 0.7150505950153612,
-          "poly_baseline_r2": 0.8010177276078638,
-          "helix_minus_baseline": -0.08596713259250266
+          "helix_r2": 0.7125410576653088,
+          "poly_baseline_r2": 0.7828397718694327,
+          "helix_minus_baseline": -0.07029871420412381
         },
         {
           "layer": 6,
-          "helix_r2": 0.7157723269024341,
-          "poly_baseline_r2": 0.8300192357556107,
-          "helix_minus_baseline": -0.11424690885317657
+          "helix_r2": 0.7104401514017364,
+          "poly_baseline_r2": 0.8141929576070398,
+          "helix_minus_baseline": -0.10375280620530336
         },
         {
           "layer": 7,
-          "helix_r2": 0.7187825236859076,
-          "poly_baseline_r2": 0.821417736087867,
-          "helix_minus_baseline": -0.10263521240195939
+          "helix_r2": 0.7099512394197895,
+          "poly_baseline_r2": 0.7990692647534138,
+          "helix_minus_baseline": -0.08911802533362423
         },
         {
           "layer": 8,
-          "helix_r2": 0.7113902718547889,
-          "poly_baseline_r2": 0.8276485840696692,
-          "helix_minus_baseline": -0.11625831221488037
+          "helix_r2": 0.6952241438328486,
+          "poly_baseline_r2": 0.7972604706527509,
+          "helix_minus_baseline": -0.10203632681990227
         },
         {
           "layer": 9,
-          "helix_r2": 0.7302879087358786,
-          "poly_baseline_r2": 0.8099837685286592,
-          "helix_minus_baseline": -0.0796958597927806
+          "helix_r2": 0.7126632313758161,
+          "poly_baseline_r2": 0.7703992964428908,
+          "helix_minus_baseline": -0.05773606506707474
         },
         {
           "layer": 10,
-          "helix_r2": 0.7240087198439988,
-          "poly_baseline_r2": 0.809668386774035,
-          "helix_minus_baseline": -0.08565966693003613
+          "helix_r2": 0.7103278099944954,
+          "poly_baseline_r2": 0.7613072114916706,
+          "helix_minus_baseline": -0.05097940149717517
         },
         {
           "layer": 11,
-          "helix_r2": 0.7163862746506122,
-          "poly_baseline_r2": 0.7709821747839865,
-          "helix_minus_baseline": -0.05459590013337423
+          "helix_r2": 0.6937865507876596,
+          "poly_baseline_r2": 0.7198834226540273,
+          "helix_minus_baseline": -0.026096871866367666
         },
         {
           "layer": 12,
-          "helix_r2": 0.7227767492425379,
-          "poly_baseline_r2": 0.7716051218358916,
-          "helix_minus_baseline": -0.04882837259335371
+          "helix_r2": 0.7041188854006166,
+          "poly_baseline_r2": 0.7133254019862838,
+          "helix_minus_baseline": -0.00920651658566718
         },
         {
           "layer": 13,
-          "helix_r2": 0.7078970662620138,
-          "poly_baseline_r2": 0.7627466196554833,
-          "helix_minus_baseline": -0.05484955339346953
+          "helix_r2": 0.6917573015585059,
+          "poly_baseline_r2": 0.7047168846797469,
+          "helix_minus_baseline": -0.012959583121241014
         },
         {
           "layer": 14,
-          "helix_r2": 0.7103636391967176,
-          "poly_baseline_r2": 0.7554942687115398,
-          "helix_minus_baseline": -0.04513062951482216
+          "helix_r2": 0.6957012195602814,
+          "poly_baseline_r2": 0.6844979306972281,
+          "helix_minus_baseline": 0.011203288863053329
         },
         {
           "layer": 15,
-          "helix_r2": 0.7141248944939316,
-          "poly_baseline_r2": 0.7537788004188045,
-          "helix_minus_baseline": -0.039653905924872945
+          "helix_r2": 0.6968145927841964,
+          "poly_baseline_r2": 0.6669093857173698,
+          "helix_minus_baseline": 0.029905207066826645
         },
         {
           "layer": 16,
-          "helix_r2": 0.7176938704126022,
-          "poly_baseline_r2": 0.7340767640351182,
-          "helix_minus_baseline": -0.016382893622515993
+          "helix_r2": 0.7000798340836836,
+          "poly_baseline_r2": 0.6331031896802555,
+          "helix_minus_baseline": 0.0669766444034281
         },
         {
           "layer": 17,
-          "helix_r2": 0.7145070623825579,
-          "poly_baseline_r2": 0.7275019063431798,
-          "helix_minus_baseline": -0.012994843960621894
+          "helix_r2": 0.6977241846956644,
+          "poly_baseline_r2": 0.6271039135714318,
+          "helix_minus_baseline": 0.07062027112423264
         },
         {
           "layer": 18,
-          "helix_r2": 0.7141824083149887,
-          "poly_baseline_r2": 0.7214838782079191,
-          "helix_minus_baseline": -0.007301469892930457
+          "helix_r2": 0.6974528531214883,
+          "poly_baseline_r2": 0.615560271411134,
+          "helix_minus_baseline": 0.0818925817103543
         },
         {
           "layer": 19,
-          "helix_r2": 0.7084149812287965,
-          "poly_baseline_r2": 0.7218732980104023,
-          "helix_minus_baseline": -0.013458316781605806
+          "helix_r2": 0.6846943960640337,
+          "poly_baseline_r2": 0.6053342391185885,
+          "helix_minus_baseline": 0.07936015694544518
         },
         {
           "layer": 20,
-          "helix_r2": 0.7082374962549514,
-          "poly_baseline_r2": 0.72178012275333,
-          "helix_minus_baseline": -0.013542626498378674
+          "helix_r2": 0.6807443620967952,
+          "poly_baseline_r2": 0.6019685706556254,
+          "helix_minus_baseline": 0.07877579144116986
         },
         {
           "layer": 21,
-          "helix_r2": 0.7036669186252478,
-          "poly_baseline_r2": 0.7204498992245043,
-          "helix_minus_baseline": -0.016782980599256536
+          "helix_r2": 0.6707807745317771,
+          "poly_baseline_r2": 0.5921214915786729,
+          "helix_minus_baseline": 0.0786592829531042
         },
         {
           "layer": 22,
-          "helix_r2": 0.696057233318446,
-          "poly_baseline_r2": 0.716019020167577,
-          "helix_minus_baseline": -0.01996178684913097
+          "helix_r2": 0.6617835517401391,
+          "poly_baseline_r2": 0.5851750274440316,
+          "helix_minus_baseline": 0.07660852429610754
         },
         {
           "layer": 23,
-          "helix_r2": 0.6918879968821683,
-          "poly_baseline_r2": 0.7088439012729646,
-          "helix_minus_baseline": -0.016955904390796306
+          "helix_r2": 0.6543467331305752,
+          "poly_baseline_r2": 0.5744481734118658,
+          "helix_minus_baseline": 0.0798985597187094
         },
         {
           "layer": 24,
-          "helix_r2": 0.6851333901033957,
-          "poly_baseline_r2": 0.7034542972017391,
-          "helix_minus_baseline": -0.018320907098343442
+          "helix_r2": 0.6471174470309444,
+          "poly_baseline_r2": 0.5649806056628275,
+          "helix_minus_baseline": 0.08213684136811694
         },
         {
           "layer": 25,
-          "helix_r2": 0.6738925982295929,
-          "poly_baseline_r2": 0.6940500194571637,
-          "helix_minus_baseline": -0.020157421227570804
+          "helix_r2": 0.6366477601955143,
+          "poly_baseline_r2": 0.5542784528302962,
+          "helix_minus_baseline": 0.08236930736521808
         },
         {
           "layer": 26,
-          "helix_r2": 0.666906467053103,
-          "poly_baseline_r2": 0.6786095721109959,
-          "helix_minus_baseline": -0.01170310505789296
+          "helix_r2": 0.6280245348484592,
+          "poly_baseline_r2": 0.5464306109994613,
+          "helix_minus_baseline": 0.08159392384899788
         },
         {
           "layer": 27,
-          "helix_r2": 0.6487724056256768,
-          "poly_baseline_r2": 0.6713101804365109,
-          "helix_minus_baseline": -0.022537774810834077
+          "helix_r2": 0.6090579450316358,
+          "poly_baseline_r2": 0.5467905648812403,
+          "helix_minus_baseline": 0.06226738015039546
         }
       ],
-      "best_layer": 18
+      "best_layer": 25
     }
   }
 }
