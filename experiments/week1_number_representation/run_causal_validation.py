@@ -35,7 +35,7 @@ single-token answers (e.g. modular, small addition) it is exact. Triples whose t
 share a first token are skipped (the logit-diff would be ~0 by construction).
 
     export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-    python experiments/week1_number_representation/run_causal_validation.py --model gptj
+    python experiments/week1_number_representation/run_causal_validation.py --model gptj --operation addition --kshot 4
     python experiments/week1_number_representation/run_causal_validation.py --model gptj \
         --operation multiplication --framing symbolic --layers 10 12 14 16 18 20
 
