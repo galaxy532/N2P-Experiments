@@ -46,8 +46,8 @@ no extra VRAM (one framing's tensors live at a time). Pass --framing F to restri
 single framing (the old behavior, written to causal_by_layer.<F>.png).
 
     export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-    python experiments/week1_number_representation/run_causal_validation.py --model gptj --operation addition --kshot 4
-    python experiments/week1_number_representation/run_causal_validation.py --model gptj \
+    python3 experiments/week1_number_representation/run_causal_validation.py --model gptj --operation addition --kshot 4
+    python3 experiments/week1_number_representation/run_causal_validation.py --model gptj \
         --operation multiplication --framing symbolic --layers 10 12 14 16 18 20
 
 NOTE: trickiest week-1 script; operand-token indexing and first-token answer constraints
