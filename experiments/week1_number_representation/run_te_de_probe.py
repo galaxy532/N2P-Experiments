@@ -280,25 +280,27 @@ def main():
 
 
 def _plot_node(node_name, panels, path, model, operation, n_test):
-    """One PNG per node; one panel-row per framing; 8 curves/panel (see METRIC_STYLE)."""
+    """One PNG per node; ONE PANEL PER FRAMING in a single row (same layout as the fourier
+    --summary heatmaps); 8 curves/panel (see METRIC_STYLE)."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     n = len(panels)
-    fig, axes = plt.subplots(n, 1, figsize=(11, 3.6 * n), squeeze=False, sharex=True)
+    fig, axes = plt.subplots(1, n, figsize=(6.8 * n, 4.6), squeeze=False,
+                             sharex=True, sharey=True)
     for i, (framing, per_layer) in enumerate(panels):
-        ax = axes[i][0]
+        ax = axes[0][i]
         L = [r["layer"] for r in per_layer]
         for key, label, style in METRIC_STYLE:
             ax.plot(L, [r["metrics"][key] for r in per_layer], label=label, **style)
         ax.axhline(0.0, color="black", lw=0.6, ls=":")
-        ax.set_ylabel(f"{framing}\nlogit units")
+        ax.set_title(framing)
+        ax.set_xlabel("layer of intervention")
         if i == 0:
-            ax.set_title(f"{node_name}-output TE/DE by layer — {model} — {operation} "
-                         f"(answer token; n_test={n_test})  [kantamneni2025 Fig 6]")
-        if i == n - 1:
-            ax.set_xlabel("layer of intervention")
+            ax.set_ylabel("logit units")
     axes[0][0].legend(fontsize=6, ncol=2, loc="best")
+    fig.suptitle(f"{node_name}-output TE/DE by layer — {model} — {operation} "
+                 f"(answer token; n_test={n_test})  [kantamneni2025 Fig 6]")
     fig.tight_layout()
     fig.savefig(path, dpi=130)
     plt.close(fig)
