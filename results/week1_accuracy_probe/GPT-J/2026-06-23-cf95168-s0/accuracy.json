@@ -1,0 +1,151 @@
+{
+  "model": "gptj",
+  "kshot": 4,
+  "n": 100,
+  "rows": [
+    {
+      "framing": "symbolic",
+      "n": 100,
+      "first_token_acc": 0.97,
+      "frac_single_token_answers": 1.0,
+      "task": "addition",
+      "tier": "clean-core"
+    },
+    {
+      "framing": "word",
+      "n": 100,
+      "first_token_acc": 0.93,
+      "frac_single_token_answers": 1.0,
+      "task": "addition",
+      "tier": "clean-core"
+    },
+    {
+      "framing": "wordproblem",
+      "n": 100,
+      "first_token_acc": 0.5,
+      "frac_single_token_answers": 1.0,
+      "task": "addition",
+      "tier": "clean-core"
+    },
+    {
+      "framing": "symbolic",
+      "n": 100,
+      "first_token_acc": 1.0,
+      "frac_single_token_answers": 0.5,
+      "task": "subtraction",
+      "tier": "clean-core"
+    },
+    {
+      "framing": "word",
+      "n": 100,
+      "first_token_acc": 0.85,
+      "frac_single_token_answers": 0.5,
+      "task": "subtraction",
+      "tier": "clean-core"
+    },
+    {
+      "framing": "wordproblem",
+      "n": 100,
+      "first_token_acc": 0.78,
+      "frac_single_token_answers": 0.5,
+      "task": "subtraction",
+      "tier": "clean-core"
+    },
+    {
+      "framing": "symbolic",
+      "n": 100,
+      "first_token_acc": 0.98,
+      "frac_single_token_answers": 1.0,
+      "task": "mult_const",
+      "tier": "clean-core"
+    },
+    {
+      "framing": "word",
+      "n": 100,
+      "first_token_acc": 0.68,
+      "frac_single_token_answers": 1.0,
+      "task": "mult_const",
+      "tier": "clean-core"
+    },
+    {
+      "framing": "wordproblem",
+      "n": 100,
+      "first_token_acc": 0.58,
+      "frac_single_token_answers": 1.0,
+      "task": "mult_const",
+      "tier": "clean-core"
+    },
+    {
+      "framing": "symbolic",
+      "n": 100,
+      "first_token_acc": 0.98,
+      "frac_single_token_answers": 1.0,
+      "task": "multiplication",
+      "tier": "stress-set"
+    },
+    {
+      "framing": "word",
+      "n": 100,
+      "first_token_acc": 0.99,
+      "frac_single_token_answers": 1.0,
+      "task": "multiplication",
+      "tier": "stress-set"
+    },
+    {
+      "framing": "wordproblem",
+      "n": 100,
+      "first_token_acc": 0.76,
+      "frac_single_token_answers": 1.0,
+      "task": "multiplication",
+      "tier": "stress-set"
+    },
+    {
+      "framing": "symbolic",
+      "n": 100,
+      "first_token_acc": 0.31,
+      "frac_single_token_answers": 1.0,
+      "task": "int_division",
+      "tier": "stress-set"
+    },
+    {
+      "framing": "word",
+      "n": 100,
+      "first_token_acc": 0.33,
+      "frac_single_token_answers": 1.0,
+      "task": "int_division",
+      "tier": "stress-set"
+    },
+    {
+      "framing": "wordproblem",
+      "n": 100,
+      "first_token_acc": 0.23,
+      "frac_single_token_answers": 1.0,
+      "task": "int_division",
+      "tier": "stress-set"
+    },
+    {
+      "framing": "symbolic",
+      "n": 100,
+      "first_token_acc": 0.12,
+      "frac_single_token_answers": 1.0,
+      "task": "modular",
+      "tier": "stress-set"
+    },
+    {
+      "framing": "word",
+      "n": 100,
+      "first_token_acc": 0.07,
+      "frac_single_token_answers": 1.0,
+      "task": "modular",
+      "tier": "stress-set"
+    },
+    {
+      "framing": "wordproblem",
+      "n": 100,
+      "first_token_acc": 0.07,
+      "frac_single_token_answers": 1.0,
+      "task": "modular",
+      "tier": "stress-set"
+    }
+  ]
+}

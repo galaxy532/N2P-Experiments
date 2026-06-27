@@ -1,0 +1,13 @@
+{
+  "date": "2026-06-26",
+  "git_sha": "d11d877",
+  "seed": 0,
+  "command": "experiments/week1_number_representation/run_helix_fit.py --model llama3-8b --operation addition --read-token sum --kshot 4",
+  "written_at": "2026-06-26T14:34:41",
+  "model": "llama3-8b",
+  "script": "run_helix_fit.py",
+  "operation": "addition",
+  "read_token": "sum",
+  "prefix": "The following is a correct math problem. \n",
+  "kshot": 4
+}

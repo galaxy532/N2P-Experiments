@@ -1,0 +1,8 @@
+{
+  "date": "2026-06-24",
+  "git_sha": "d11d877",
+  "seed": 0,
+  "command": "experiments/week1_accuracy_probe/run_accuracy_probe.py --model llama3-8b --kshot 4 --n 100",
+  "written_at": "2026-06-24T12:56:36",
+  "model": "llama3-8b"
+}

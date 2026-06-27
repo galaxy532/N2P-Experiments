@@ -1,0 +1,13 @@
+{
+  "date": "2026-06-26",
+  "git_sha": "d11d877",
+  "seed": 0,
+  "command": "experiments/week1_number_representation/run_helix_fit.py --model gptj --operation multiplication --read-token sum --kshot 4",
+  "written_at": "2026-06-26T13:39:59",
+  "model": "gptj",
+  "script": "run_helix_fit.py",
+  "operation": "multiplication",
+  "read_token": "sum",
+  "prefix": "Output ONLY a number.\n",
+  "kshot": 4
+}

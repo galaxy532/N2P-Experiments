@@ -1,0 +1,8 @@
+{
+  "date": "2026-06-23",
+  "git_sha": "cf95168",
+  "seed": 0,
+  "command": "experiments/week1_accuracy_probe/run_accuracy_probe.py --model gptj --kshot 4 --n 100",
+  "written_at": "2026-06-23T15:14:00",
+  "model": "gptj"
+}

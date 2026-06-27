@@ -1,0 +1,171 @@
+{
+  "model": "gptj",
+  "kshot": 4,
+  "n": 100,
+  "gen_tokens": 6,
+  "prefix": "Output ONLY a number.\n",
+  "rows": [
+    {
+      "framing": "symbolic",
+      "n": 100,
+      "exact_value_acc": 0.99,
+      "first_token_acc": 0.99,
+      "frac_single_token_answers": 1.0,
+      "task": "addition",
+      "tier": "clean-core"
+    },
+    {
+      "framing": "word",
+      "n": 100,
+      "exact_value_acc": 0.91,
+      "first_token_acc": 0.91,
+      "frac_single_token_answers": 1.0,
+      "task": "addition",
+      "tier": "clean-core"
+    },
+    {
+      "framing": "wordproblem",
+      "n": 100,
+      "exact_value_acc": 0.44,
+      "first_token_acc": 0.44,
+      "frac_single_token_answers": 1.0,
+      "task": "addition",
+      "tier": "clean-core"
+    },
+    {
+      "framing": "symbolic",
+      "n": 100,
+      "exact_value_acc": 0.93,
+      "first_token_acc": 1.0,
+      "frac_single_token_answers": 0.5,
+      "task": "subtraction",
+      "tier": "clean-core"
+    },
+    {
+      "framing": "word",
+      "n": 100,
+      "exact_value_acc": 0.85,
+      "first_token_acc": 0.85,
+      "frac_single_token_answers": 0.5,
+      "task": "subtraction",
+      "tier": "clean-core"
+    },
+    {
+      "framing": "wordproblem",
+      "n": 100,
+      "exact_value_acc": 0.46,
+      "first_token_acc": 0.66,
+      "frac_single_token_answers": 0.5,
+      "task": "subtraction",
+      "tier": "clean-core"
+    },
+    {
+      "framing": "symbolic",
+      "n": 100,
+      "exact_value_acc": 0.97,
+      "first_token_acc": 0.97,
+      "frac_single_token_answers": 1.0,
+      "task": "mult_const",
+      "tier": "clean-core"
+    },
+    {
+      "framing": "word",
+      "n": 100,
+      "exact_value_acc": 0.67,
+      "first_token_acc": 0.67,
+      "frac_single_token_answers": 1.0,
+      "task": "mult_const",
+      "tier": "clean-core"
+    },
+    {
+      "framing": "wordproblem",
+      "n": 100,
+      "exact_value_acc": 0.73,
+      "first_token_acc": 0.73,
+      "frac_single_token_answers": 1.0,
+      "task": "mult_const",
+      "tier": "clean-core"
+    },
+    {
+      "framing": "symbolic",
+      "n": 100,
+      "exact_value_acc": 0.98,
+      "first_token_acc": 0.98,
+      "frac_single_token_answers": 1.0,
+      "task": "multiplication",
+      "tier": "stress-set"
+    },
+    {
+      "framing": "word",
+      "n": 100,
+      "exact_value_acc": 0.99,
+      "first_token_acc": 0.99,
+      "frac_single_token_answers": 1.0,
+      "task": "multiplication",
+      "tier": "stress-set"
+    },
+    {
+      "framing": "wordproblem",
+      "n": 100,
+      "exact_value_acc": 0.73,
+      "first_token_acc": 0.73,
+      "frac_single_token_answers": 1.0,
+      "task": "multiplication",
+      "tier": "stress-set"
+    },
+    {
+      "framing": "symbolic",
+      "n": 100,
+      "exact_value_acc": 0.34,
+      "first_token_acc": 0.34,
+      "frac_single_token_answers": 1.0,
+      "task": "int_division",
+      "tier": "stress-set"
+    },
+    {
+      "framing": "word",
+      "n": 100,
+      "exact_value_acc": 0.6,
+      "first_token_acc": 0.6,
+      "frac_single_token_answers": 1.0,
+      "task": "int_division",
+      "tier": "stress-set"
+    },
+    {
+      "framing": "wordproblem",
+      "n": 100,
+      "exact_value_acc": 0.21,
+      "first_token_acc": 0.21,
+      "frac_single_token_answers": 1.0,
+      "task": "int_division",
+      "tier": "stress-set"
+    },
+    {
+      "framing": "symbolic",
+      "n": 100,
+      "exact_value_acc": 0.11,
+      "first_token_acc": 0.11,
+      "frac_single_token_answers": 1.0,
+      "task": "modular",
+      "tier": "stress-set"
+    },
+    {
+      "framing": "word",
+      "n": 100,
+      "exact_value_acc": 0.13,
+      "first_token_acc": 0.13,
+      "frac_single_token_answers": 1.0,
+      "task": "modular",
+      "tier": "stress-set"
+    },
+    {
+      "framing": "wordproblem",
+      "n": 100,
+      "exact_value_acc": 0.07,
+      "first_token_acc": 0.07,
+      "frac_single_token_answers": 1.0,
+      "task": "modular",
+      "tier": "stress-set"
+    }
+  ]
+}
