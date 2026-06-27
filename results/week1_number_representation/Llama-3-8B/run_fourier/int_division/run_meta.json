@@ -1,0 +1,13 @@
+{
+  "date": "2026-06-27",
+  "git_sha": "9ed3ee0",
+  "seed": 0,
+  "command": "experiments/week1_number_representation/run_fourier.py --model llama3-8b --summary --operation int_division --read-token sum --kshot 4",
+  "written_at": "2026-06-27T02:41:51",
+  "model": "llama3-8b",
+  "script": "run_fourier.py",
+  "operation": "int_division",
+  "read_token": "sum",
+  "summary": true,
+  "framing": null
+}
