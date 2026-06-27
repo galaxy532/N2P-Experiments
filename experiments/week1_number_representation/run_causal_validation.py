@@ -34,6 +34,14 @@ admissible. NB this is then a LEADING-DIGIT / MAGNITUDE test, not a full-value t
 single-token answers (e.g. modular, small addition) it is exact. Triples whose two answers
 share a first token are skipped (the logit-diff would be ~0 by construction).
 
+All framings by default (2026-06-27, user-approved): like the fourier --summary path, the
+bare run now sweeps EVERY framing of the operation (symbolic/word/wordproblem) and draws
+one panel-row per framing in a single combined figure (causal_by_layer.summary.png), with
+one JSON per framing. The fit + patch-and-measure repeats per framing (the surface form
+before `{a}` differs, so the fitted helix basis differs) — ~3x the patched forwards, but
+no extra VRAM (one framing's tensors live at a time). Pass --framing F to restrict to a
+single framing (the old behavior, written to causal_by_layer.<F>.png).
+
     export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
     python experiments/week1_number_representation/run_causal_validation.py --model gptj --operation addition --kshot 4
     python experiments/week1_number_representation/run_causal_validation.py --model gptj \
@@ -118,7 +126,9 @@ def main():
     ap.add_argument("--operation", choices=tasks.OPERATION_CHOICES, default="addition",
                     help="which operation's prompts to validate (its answer comes from "
                          "tasks.REGISTRY[op].fn). See n2p.tasks.FRAMINGS.")
-    ap.add_argument("--framing", choices=tasks.FRAMING_NAMES, default="symbolic")
+    ap.add_argument("--framing", choices=tasks.FRAMING_NAMES, default=None,
+                    help="restrict to a single framing; default = ALL framings of the "
+                         "operation, one panel-row each (like the fourier --summary).")
     ap.add_argument("--layers", type=int, nargs="*", default=None,
                     help="layers of intervention to sweep (Fig-5/6 x-axis). Default = "
                          "band from min(build_layers)-4 to the last layer.")
@@ -142,17 +152,52 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
-    rng = random.Random(args.seed)
     spec = config.get_model_spec(args.model)
     model = models.load_model(args.model)
     prefix = args.prefix if args.prefix is not None else spec.prompt_prefix
     shots = tasks.fewshot_shots(args.operation, args.kshot, args.seed)
     print(f"[prefix] {prefix!r}  [kshot] {args.kshot}")
-    operation, framing = args.operation, args.framing
+    operation = args.operation
     layers = resolve_layers(args, spec)
-    print(f"[setup] {operation}/{framing}; layers={layers[0]}..{layers[-1]} "
-          f"({len(layers)} layers) x ~{args.n_test} triples x methods -> "
-          f"~{len(layers) * args.n_test} patched forwards. Restrict with --layers if slow.")
+    # Default = ALL framings of the operation (one panel-row each), mirroring the fourier
+    # --summary path; --framing F restricts to a single framing. read-token is fixed "a".
+    framings = [args.framing] if args.framing else repcli.framings_for_summary(operation, "a")
+    if not framings:
+        raise SystemExit(f"no framing available for operation {operation!r}")
+    print(f"[setup] {operation}; framings={framings}; layers={layers[0]}..{layers[-1]} "
+          f"({len(layers)} layers) x ~{args.n_test} triples x methods per framing -> "
+          f"~{len(framings) * len(layers) * args.n_test} patched forwards total. "
+          f"Restrict with --framing / --layers if slow.")
+
+    out = config.run_dir("week1_number_representation", args.seed, model=args.model,
+                         label=f"run_causal_validation/{operation}",
+                         meta={"script": "run_causal_validation.py", "operation": operation,
+                               "framing": framings[0] if len(framings) == 1 else None,
+                               "framings": framings, "read_token": "a", "layers": layers,
+                               "prefix": prefix, "kshot": args.kshot})
+
+    panels = []  # (framing, per_layer_summary, methods, frac_single)
+    for framing in framings:
+        per_layer_summary, methods, summary, triples = run_one_framing(
+            model, spec, args, operation, framing, prefix, shots, layers)
+        (out / f"causal_validation.{framing}.json").write_text(
+            json.dumps({"summary": summary, "trials": triples}, indent=2))
+        panels.append((framing, per_layer_summary, methods,
+                       summary["frac_single_token_answers"]))
+        print(json.dumps(summary, indent=2))
+
+    plot_name = (f"causal_by_layer.{framings[0]}.png" if len(framings) == 1
+                 else "causal_by_layer.summary.png")
+    _plot(panels, out / plot_name, args.model, operation)
+    print(f"[done] wrote {out} ({len(framings)} framing(s): {framings})")
+
+
+def run_one_framing(model, spec, args, operation, framing, prefix, shots, layers):
+    """Full fit -> patch-and-measure -> aggregate pipeline for ONE framing. Returns
+    (per_layer_summary, methods, summary, triples). Reseeds its own RNG from --seed so
+    framings are sampled comparably (identical seed -> identical triples where the
+    single-token pools coincide)."""
+    rng = random.Random(args.seed)
 
     # --- single-token operand sweep for the helix fit (same pool as run_helix_fit) ---
     # Validated against the real (operation, framing) prompt so it is correct on any
@@ -264,45 +309,40 @@ def main():
             "modular shows which part does the causal work. For multi-token answers this "
             "is a leading-digit/magnitude test (see frac_single_token_answers)."),
     }
-    out = config.run_dir("week1_number_representation", args.seed, model=args.model,
-                         label=f"run_causal_validation/{operation}",
-                         meta={"script": "run_causal_validation.py", "operation": operation,
-                               "framing": framing, "read_token": "a", "layers": layers,
-                               "prefix": prefix, "kshot": args.kshot})
-    (out / f"causal_validation.{framing}.json").write_text(
-        json.dumps({"summary": summary, "trials": triples}, indent=2))
-    _plot(per_layer_summary, methods, out / f"causal_by_layer.{framing}.png",
-          args.model, operation, framing, summary["frac_single_token_answers"])
-    print(json.dumps(summary, indent=2))
-    print(f"[done] wrote {out}")
+    return per_layer_summary, methods, summary, triples
 
 
-def _plot(per_layer_summary, methods, path, model, operation, framing, frac_single):
+def _plot(panels, path, model, operation):
+    """One panel-ROW per framing (absolute | ratio), stacked into one figure — the causal
+    analogue of the fourier --summary 'one panel per framing' layout. `panels` is a list of
+    (framing, per_layer_summary, methods, frac_single)."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    L = [r["layer"] for r in per_layer_summary]
-    fig, axes = plt.subplots(1, 2, figsize=(13, 4.2), sharex=True)
-    for m in methods:
-        style = dict(marker="o", ms=3)
-        if m == "full_layer":
-            style = dict(marker="s", ms=4, lw=2, color="black")
-        elif m == "noop":
-            style = dict(marker="x", ms=3, ls="--", color="grey")
-        axes[0].plot(L, [r["mean_logit_diff"][m] for r in per_layer_summary],
-                     label=m, **style)
-        axes[1].plot(L, [r["ratio_over_full_layer"][m] for r in per_layer_summary],
-                     label=m, **style)
-    axes[0].set_ylabel("mean logit-diff  (a' vs a)")
-    axes[0].set_title("absolute")
-    axes[1].axhline(1.0, color="black", lw=0.6, ls=":")
-    axes[1].set_ylabel("ratio over full-layer patch")
-    axes[1].set_title("ratio (1.0 = full-layer ceiling)")
-    for ax in axes:
+    n = len(panels)
+    fig, axes = plt.subplots(n, 2, figsize=(13, 4.2 * n), squeeze=False, sharex=True)
+    for i, (framing, per_layer_summary, methods, frac_single) in enumerate(panels):
+        L = [r["layer"] for r in per_layer_summary]
+        ax_abs, ax_ratio = axes[i][0], axes[i][1]
+        for m in methods:
+            style = dict(marker="o", ms=3)
+            if m == "full_layer":
+                style = dict(marker="s", ms=4, lw=2, color="black")
+            elif m == "noop":
+                style = dict(marker="x", ms=3, ls="--", color="grey")
+            ax_abs.plot(L, [r["mean_logit_diff"][m] for r in per_layer_summary],
+                        label=m, **style)
+            ax_ratio.plot(L, [r["ratio_over_full_layer"][m] for r in per_layer_summary],
+                          label=m, **style)
+        ax_abs.set_ylabel("mean logit-diff  (a' vs a)")
+        ax_abs.set_title(f"{framing} — absolute  (single-token answers: {frac_single:.0%})")
+        ax_ratio.axhline(1.0, color="black", lw=0.6, ls=":")
+        ax_ratio.set_ylabel("ratio over full-layer patch")
+        ax_ratio.set_title(f"{framing} — ratio (1.0 = full-layer ceiling)")
+        ax_ratio.legend(fontsize=7, ncol=2)
+    for ax in axes[-1]:
         ax.set_xlabel("layer of intervention")
-    axes[1].legend(fontsize=7, ncol=2)
-    fig.suptitle(f"Causal sufficiency of the helix subspace — {model} — {operation}/"
-                 f"{framing}  (single-token answers: {frac_single:.0%})")
+    fig.suptitle(f"Causal sufficiency of the helix subspace — {model} — {operation}")
     fig.tight_layout()
     fig.savefig(path, dpi=130)
     plt.close(fig)
