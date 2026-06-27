@@ -42,12 +42,23 @@ def cache_number_site_all_layers(model, prompts, hook_names, token_index=-1,
     `cache_number_site` calls (which each re-run the whole model) with one batched
     sweep — e.g. for a per-layer helix scan, ~n_layers x fewer forward passes.
 
+    The sweep also stops right after the DEEPEST requested block (`stop_at_layer`): every
+    cached hook (mlp_out / attn_out / resid_post) fires *inside* its block, so all
+    requested layers are still captured, but transformer_lens then skips `ln_final` and the
+    full `[batch, pos, d_vocab]` unembed. No caller needs those logits (logit-lens
+    projections are done afterward via `W_U[:, number_ids]`), and that unembed is what
+    OOMs large-vocab models — e.g. Llama-3 (d_vocab=128256) at kshot>0 — so skipping it is
+    free correctness-wise and removes the memory cliff.
+
     Args:
         hook_names:  iterable of hook strings (e.g. every blocks.L.hook_resid_post).
+                     Names not of the form "blocks.<L>." fall back to running all blocks
+                     (still skipping only the unembed).
         token_index: position to read (-1 = last token = the number token here).
         batch_size:  prompts per forward. Prompts here are equal length (single
                      number tokens), so they batch without padding; lower this only
-                     if a longer-prompt variant runs out of memory.
+                     if a longer-prompt variant runs out of memory (the unembed is no
+                     longer the bottleneck — remaining cost is the cached activations).
 
     Returns: dict {hook_name -> (len(prompts), d_model) float32 numpy}, matching what
     `cache_number_site` returns per hook.
@@ -58,10 +69,22 @@ def cache_number_site_all_layers(model, prompts, hook_names, token_index=-1,
         d = model.cfg.d_model
         return {h: np.empty((0, d), dtype=np.float32) for h in names}
 
+    # Halt the forward after the deepest requested block so the full-vocab unembed
+    # (and ln_final) are never run — see docstring. Unknown hook shapes -> run all blocks.
+    def _block_idx(h):
+        parts = h.split(".")
+        if len(parts) >= 2 and parts[0] == "blocks" and parts[1].isdigit():
+            return int(parts[1])
+        return None
+    idxs = [_block_idx(h) for h in names]
+    stop_at_layer = (model.cfg.n_layers if None in idxs
+                     else min(max(idxs) + 1, model.cfg.n_layers))
+
     chunks = {h: [] for h in names}
     for i in range(0, len(prompts), batch_size):
         toks = model.to_tokens(prompts[i:i + batch_size])  # (b, seq); equal len -> no pad
-        _, cache = model.run_with_cache(toks, names_filter=lambda n: n in nameset)
+        _, cache = model.run_with_cache(
+            toks, names_filter=lambda n: n in nameset, stop_at_layer=stop_at_layer)
         for h in names:
             chunks[h].append(cache[h][:, token_index].float().cpu().numpy())
     return {h: np.concatenate(v, axis=0) for h, v in chunks.items()}

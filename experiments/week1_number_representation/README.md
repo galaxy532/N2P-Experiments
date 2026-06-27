@@ -45,6 +45,14 @@ framings); `sum` = last token (the only meaningful logit-lens site for
 logit-lens script. Per-layer runs take a single `--framing` (default `symbolic`); `--summary`
 iterates **all three** framings as panels.
 
+**Memory on large-vocab models.** The all-layer caching sweep
+(`causal.cache_number_site_all_layers`) stops the forward after the deepest cached block, so
+the full-vocab unembed is never run — this is what keeps the `--summary` component sweeps
+(which cache `mlp_out` + `attn_out` for *every* layer) within an A6000's 48 GB on Llama-3
+(`d_vocab=128256`) at `--kshot 4`. If a longer-prompt or larger-`kshot` variant still runs
+tight, lower `batch_size` in that helper (the remaining cost is the cached activations, not
+the logits).
+
 **Model prompt prefix (`--prefix`).** Every prompt is prepended with a model-specific
 zero-shot instruction from `config.ModelSpec.prompt_prefix` — GPT-J `"Output ONLY a
 number.\n"`, Llama-3 `"The following is a correct math problem. \n"` — because

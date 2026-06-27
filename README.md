@@ -145,6 +145,13 @@ N2P-Experiments/
   cached activations CPU-side); heavy forward passes guard on `config.DEVICE`.
 - **Activations cache:** large activation tensors go to `results/<exp>/<run_id>/acts/`
   and are gitignored; only summary stats + plots are committed.
+- **Activation sweeps skip the unembed:** `causal.cache_number_site_all_layers` (used by
+  the helix, Fourier and causal-validation caching paths) stops the forward after the
+  deepest cached block (`stop_at_layer`), so the full `[batch, pos, d_vocab]` logits are
+  never materialized. All requested layers are still captured in the one sweep (hooks fire
+  inside their blocks); logit-lens projections are taken afterward via `W_U[:, number_ids]`.
+  This is what lets the all-layer component sweeps fit on large-vocab models
+  (Llama-3, `d_vocab=128256`) at `kshot>0` — the unembed was the OOM, not the cache.
 
 ## 5. Running on Paperspace Gradient (A6000, 48 GB)
 
