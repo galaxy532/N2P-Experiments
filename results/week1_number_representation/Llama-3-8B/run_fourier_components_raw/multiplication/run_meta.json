@@ -1,0 +1,14 @@
+{
+  "date": "2026-06-27",
+  "git_sha": "db766f6",
+  "seed": 0,
+  "command": "experiments/week1_number_representation/run_fourier_components_raw.py --model llama3-8b --summary --operation multiplication --read-token sum --kshot 4",
+  "written_at": "2026-06-27T18:15:07",
+  "model": "llama3-8b",
+  "script": "run_fourier_components_raw.py",
+  "operation": "multiplication",
+  "read_token": "sum",
+  "layer": null,
+  "summary": true,
+  "framing": null
+}

@@ -11,7 +11,7 @@ Fig-3 layer x frequency heatmap with ONE PANEL PER FRAMING, as TWO files
 
     export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
     python3 experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --layer 16 --operation addition --framing symbolic --read-token a
-    python3 experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --summary --operation addition --read-token a
+    python3 experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --summary --operation addition --read-token sum --kshot 4
 
 NOTE on --hi 360: 0..360 is 361 points (prime) -> periods read slightly off; use
 --lo 1 --hi 360 for exact bins. Default kept at 360.
