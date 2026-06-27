@@ -158,8 +158,13 @@ def full_layer_patch_logit_diff(model, clean_prompt, corrupt_prompt, hook_name,
 #   indirect_effect = total - direct.
 # `sender_basis` (d_model, k) optionally restricts the swap to a subspace (e.g. an SAE /
 # helix direction) — the N2P "replace along a direction, not the whole node" granularity
-# (see approach-decision-circuit-identification.md). Scope: last-token (answer) analysis,
-# patching at `token_index`; this matches the Fig-6 use. GPU-untested (no model offline).
+# (see approach-decision-circuit-identification.md). With `analytic_target` it writes a
+# SPECIFIC fitted vector (e.g. helix(a+b)) into that subspace instead of the empirical
+# projection (see _swap_value). `total_effect_logit_diff(return_logits=True)` also returns
+# the clean/corrupt answer logits so callers can decompose the TE logit-diff into "raised
+# the clean answer" (Δlogit[a+b]) vs "suppressed the corrupt answer" (−Δlogit[a'+b]).
+# Scope: last-token (answer) analysis, patching at `token_index`; this matches the Fig-6
+# use. GPU-untested (no model offline).
 # =====================================================================================
 
 def component_output_hooks(model):
@@ -180,45 +185,73 @@ def _cache_at(model, prompt, hook_names, token_index):
     return {h: cache[h][0, token_index] for h in hook_names}
 
 
-def _swap_value(cur, clean_val, basis):
+def _swap_value(cur, clean_val, basis, analytic_target=None):
     """New value to write at the patched position. cur: (batch, d_model); clean_val:
-    (d_model,). basis None -> full swap to clean; else swap only the projection onto
-    span(basis): cur + (clean-cur) projected into the subspace."""
+    (d_model,).
+
+    Three modes:
+      - basis None                      -> FULL swap to clean (whole-node patch).
+      - basis given, analytic_target None (EMPIRICAL) -> swap only the projection of the
+        real (clean-cur) onto span(basis): cur + P(clean-cur). Tests the learned SUBSPACE.
+      - basis given, analytic_target=(d_model,) (ANALYTIC) -> replace the subspace part of
+        cur with the subspace part of `analytic_target` (e.g. the fitted helix(a+b)),
+        keeping the orthogonal complement of cur untouched: (I-UU^T)cur + UU^T t. Tests
+        the SPECIFIC fitted helix (the stub target). NB no average-ablation of the
+        complement here (unlike subspace_patch_logit_diff) — for TE/DE the rest must stay
+        at its recomputed/frozen value so the direction effect is isolated cleanly.
+    """
     if basis is None:
         return clean_val
     U = torch.as_tensor(basis, dtype=cur.dtype, device=cur.device)   # (d, k)
-    delta = clean_val.unsqueeze(0) - cur                              # (b, d)
-    proj = (delta @ U) @ U.t()                                       # (b, d)
-    return cur + proj
+    if analytic_target is None:
+        delta = clean_val.unsqueeze(0) - cur                         # (b, d)
+        proj = (delta @ U) @ U.t()                                   # (b, d)
+        return cur + proj
+    t = torch.as_tensor(analytic_target, dtype=cur.dtype, device=cur.device)  # (d,)
+    cur_sub = (cur @ U) @ U.t()                                      # (b, d) cur's subspace part
+    t_sub = (t @ U) @ U.t()                                          # (d,)  target's subspace part
+    return cur - cur_sub + t_sub                                     # broadcast t_sub over batch
 
 
 @torch.no_grad()
 def total_effect_logit_diff(model, clean_prompt, corrupt_prompt, sender_hook,
-                            answer_tokens, token_index=-1, sender_basis=None):
+                            answer_tokens, token_index=-1, sender_basis=None,
+                            analytic_target=None, return_logits=False):
     """TOTAL effect of `sender_hook`: patch it to its clean value on the corrupt run and
     let the rest of the network recompute. Returns logit[ap]-logit[a] (answer_tokens =
-    (a_id, ap_id) = (corrupt-answer, clean-answer))."""
+    (a_id, ap_id) = (corrupt-answer, clean-answer)).
+
+    `analytic_target` (with `sender_basis`) writes the fitted helix(a+b) into the subspace
+    rather than the empirical projection (see _swap_value). `return_logits=True` returns a
+    dict {ld, logit_clean=last[ap_id], logit_corrupt=last[a_id]} so a caller can build the
+    Δlogit[a+b] / −Δlogit[a'+b] decomposition against an unpatched-corrupt baseline."""
     clean_val = _cache_at(model, clean_prompt, [sender_hook], token_index)[sender_hook]
 
     def hook(act, hook):
-        act[:, token_index, :] = _swap_value(act[:, token_index, :], clean_val, sender_basis)
+        act[:, token_index, :] = _swap_value(act[:, token_index, :], clean_val,
+                                             sender_basis, analytic_target)
         return act
 
     toks = model.to_tokens(corrupt_prompt)
     logits = model.run_with_hooks(toks, fwd_hooks=[(sender_hook, hook)])
     last = logits[0, -1]
     a_id, ap_id = answer_tokens
-    return float(last[ap_id] - last[a_id])
+    ld = float(last[ap_id] - last[a_id])
+    if return_logits:
+        return {"ld": ld, "logit_clean": float(last[ap_id]),
+                "logit_corrupt": float(last[a_id])}
+    return ld
 
 
 @torch.no_grad()
 def direct_effect_logit_diff(model, clean_prompt, corrupt_prompt, sender_hook,
                              answer_tokens, frozen_hooks=None, token_index=-1,
-                             sender_basis=None):
+                             sender_basis=None, analytic_target=None):
     """DIRECT effect of `sender_hook` (path patching): patch it to clean while FREEZING
     every hook in `frozen_hooks` (default: all component outputs except the sender) to its
     CORRUPT (base) value, so the sender only reaches the logits via the direct residual
-    path. Same return convention as total_effect_logit_diff. IE = TE - DE."""
+    path. Same return convention as total_effect_logit_diff. IE = TE - DE. `analytic_target`
+    (with `sender_basis`) writes the fitted helix into the subspace (see _swap_value)."""
     if frozen_hooks is None:
         frozen_hooks = component_output_hooks(model)
     frozen = [h for h in frozen_hooks if h != sender_hook]
@@ -228,7 +261,8 @@ def direct_effect_logit_diff(model, clean_prompt, corrupt_prompt, sender_hook,
     fwd_hooks = []
 
     def sender_fn(act, hook):
-        act[:, token_index, :] = _swap_value(act[:, token_index, :], clean_val, sender_basis)
+        act[:, token_index, :] = _swap_value(act[:, token_index, :], clean_val,
+                                             sender_basis, analytic_target)
         return act
 
     fwd_hooks.append((sender_hook, sender_fn))

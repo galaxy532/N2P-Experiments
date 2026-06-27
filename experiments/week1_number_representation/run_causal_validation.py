@@ -20,6 +20,9 @@ Pipeline (now swept across layers, and across operations/framings):
 WHY swept across LAYERS (2026-06-22, user-approved): a single build-layer number is only
 a go/no-go; the [kantamneni2025] Fig-5 / [engels2024] Fig-6 object is the curve of mean
 logit-diff vs LAYER OF INTERVENTION, which shows WHERE sufficiency emerges and decays.
+The default sweep is now ALL layers 0..last (2026-06-27, user request): the build_layers
+band is a [kantamneni2025] prior on GPT-J and an unverified placeholder on Llama, so it is
+NOT taken for granted here; pass --layers LO HI.. to restrict.
 WHY swept across OPERATIONS: although the operand-`a` representation (and hence the fitted
 helix basis) is IDENTICAL across operations sharing a pre-`{a}` prefix (causal masking;
 see exp-notes/helix-experiments-week1-results.md), the patch MEASUREMENT runs the
@@ -78,14 +81,15 @@ def is_single_token_answer(model, answer):
 
 
 def resolve_layers(args, spec) -> list[int]:
-    """--layers wins; else single --layer; else a band from min(build)-4 to the last
-    layer (covers the build 14-18 + late read-out 19-27 bands on GPT-J)."""
+    """--layers wins; else single --layer; else ALL layers 0..n_layers-1. We deliberately
+    do NOT seed the default from spec.build_layers: the GPT-J band is a [kantamneni2025]
+    prior and the Llama band is an unverified placeholder, so the sweep should not take
+    them for granted (2026-06-27, user request). Restrict with --layers if slow."""
     if args.layers:
         return sorted({L for L in args.layers if 0 <= L < spec.n_layers})
     if args.layer is not None:
         return [args.layer]
-    lo = max(0, min(spec.build_layers) - 4)
-    return list(range(lo, spec.n_layers))
+    return list(range(spec.n_layers))
 
 
 def fit_helix_all_layers(model, operation, framing, values, b_fixed, layers, n_pca,
@@ -131,7 +135,7 @@ def main():
                          "operation, one panel-row each (like the fourier --summary).")
     ap.add_argument("--layers", type=int, nargs="*", default=None,
                     help="layers of intervention to sweep (Fig-5/6 x-axis). Default = "
-                         "band from min(build_layers)-4 to the last layer.")
+                         "ALL layers (0..last); no build_layers prior is assumed.")
     ap.add_argument("--layer", type=int, default=None,
                     help="single-layer shortcut (ignored if --layers given).")
     ap.add_argument("--n_fit", type=int, default=200)

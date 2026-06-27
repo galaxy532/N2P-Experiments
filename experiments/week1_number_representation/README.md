@@ -12,7 +12,7 @@ This is go/no-go gate #1.
 | `run_fourier.py` | Fourier features in **activation space** [zhou2024 §4.1] | sparse power spectrum; a magnitude (low-freq) peak + modular peaks at periods {2,2.5,5,10}; present already in **embeddings**. NB: top-10-by-power is dominated by the low-freq magnitude tail — read the *plot peaks*, not the ranking (see `fourier-experiments-week1-results.md`) |
 | `run_fourier_components.py` | per-component **logit** spectra [zhou2024 §3, Figs 2–3] | MLP-output logits dominated by **low-freq** (magnitude/approximation), attention-output logits by **high-freq** periods {2,5,10} (modular/classification) |
 | `run_fourier_components_raw.py` | per-component **activation** spectra (SAE-relevant) | MLP-output / attn-output activations sparse in frequency over the **input** number; the object week-2 SAEs ingest |
-| `run_causal_validation.py` | causal sufficiency [engels2024 §5 / kantamneni2025 Fig 5] | helix-full ÷ full-layer logit-diff ratio near 1.0 **over a layer band**, and helix-full ≥ the PCA-9/27 baseline (the helix *form*, not generic capacity, is causal). Now swept across `--layers` and runnable on any `--operation`/`--framing`. |
+| `run_causal_validation.py` | causal sufficiency [engels2024 §5 / kantamneni2025 Fig 5] | helix-full ÷ full-layer logit-diff ratio near 1.0 **over a layer band**, and helix-full ≥ the PCA-9/27 baseline (the helix *form*, not generic capacity, is causal). Swept across **all layers** by default (no `build_layers` prior) and **all three framings** (one panel-row each). |
 
 **The two `*_components*` scripts answer different questions.** `run_fourier_components.py`
 (logit lens, read at the **sum** token via `--read-token sum`) asks *which residue class a
@@ -109,7 +109,10 @@ results/week1_number_representation/<model>/
 │                                     summary_MLP.<rt>.png + summary_Attn.<rt>.png   (--summary; panel per framing)
 ├── run_fourier_components_raw/<operation>/ L<n>.<framing>.<rt>.png|json  (raw activations)
 │                                     summary_MLP.<rt>.png + summary_Attn.<rt>.png   (--summary; panel per framing)
-└── run_causal_validation/<operation>/ causal_validation.<framing>.json, causal_by_layer.<framing>.png  (per-layer sweep; Fig-5/6 curve)
+├── run_causal_validation/<operation>/ causal_validation.<framing>.json (per framing),
+│                                     causal_by_layer.summary.png  (all-layer sweep, panel-row per framing; Fig-5/6 curve)
+└── run_te_de_probe/<operation>/      te_de.<framing>.json (per framing),
+                                      te_de_summary_MLP.png + te_de_summary_Attn.png  (per-layer TE/DE, panel per framing, 8 curves)
 ```
 `<model>` is `GPT-J` for `--model gptj`, `Llama-3-8B` for `--model llama3-8b`; `<rt>` is the
 `--read-token`. Each folder has a `run_meta.json` (date, git sha, seed, model, operation,
@@ -127,12 +130,14 @@ split). `--layers LO HI` restricts the band; colour defaults to `--power-transfo
 `--vmax-percentile 99.5`, `--cmap inferno_r`. Outlier components expected at periods ~2, 2.5, 5, 10.
 
 ## Causal validation outputs (`run_causal_validation.py`)
-Sweeps the patch across **layers of intervention** (`--layers`, default a band from
-`min(build_layers)-4` to the last layer) for one `--operation`/`--framing`, and for each
-layer reports, per method, the mean operand-`a→a'` logit-diff and its ratio to the
-full-layer patch (the ceiling); `noop` is the floor. Output is a two-panel plot
-(`causal_by_layer.<framing>.png`: absolute logit-diff + ratio-over-full-layer vs **layer of
-intervention** — the [kantamneni2025] Fig-5 / [engels2024] Fig-6 shape) plus the JSON.
+Sweeps the patch across **layers of intervention** (`--layers`, default = **ALL layers
+`0..last`**; no `build_layers` prior is assumed — 2026-06-27) and across **all three framings
+by default** (`--framing` restricts to one). For each layer it reports, per method, the mean
+operand-`a→a'` logit-diff and its ratio to the full-layer patch (the ceiling); `noop` is the
+floor. Output is a single combined plot **`causal_by_layer.summary.png`** — one panel-row per
+framing × 2 columns (absolute logit-diff + ratio-over-full-layer vs **layer of intervention**,
+the [kantamneni2025] Fig-5 / [engels2024] Fig-6 shape) — plus one `causal_validation.<framing>.json`
+per framing. (A single-framing run instead writes `causal_by_layer.<framing>.png`.)
 
 - `helix_full` — the whole helix (linear + all periods + DC). Tracking the full-layer ceiling over a layer band ⇒ the helix subspace is causally sufficient there.
 - `helix_magnitude` / `helix_modular` — the **separable** split: magnitude = linear + DC + `T=100` (low-freq); modular = `T=2,5,10` (high-freq). Shows which part carries the effect (the stub replaces the magnitude part exactly, [zhou2024 Table 1]).
@@ -150,21 +155,34 @@ fit once and the basis reused across operations; only patch-and-measure repeats.
 ## TE/DE write-site probe (`run_te_de_probe.py`, optional validation)
 Not part of the core reproduction sequence — a role-labeling pass that reproduces
 [kantamneni2025] Fig 6 on our model and tests where the answer is *written* (the stub
-injection site). Per last-token MLP-out / attn-out it reports **TE** (activation patch,
-downstream recomputes), **DE** (path patch, downstream frozen to corrupt), and IE = TE−DE,
-averaged over `(a, a', b)` triples. Pass signal: MLPs dominate DE (write), early attention
-dominates IE (routing); cumulative MLP DE saturates at the write-site band. It also runs a
-**direction-restricted** DE/TE at the build layer (sender swap confined to the answer-helix
-subspace) — `helix_direction_de_fraction ≈ 1` supports "replace along a direction". This is
-the probe `approach-decision-circuit-identification.md` asks for before adopting TE/DE as a
-validation layer; it does **not** use Edge Pruning (that is `run_discovery_sanity.py`).
+injection site). Per last-token MLP-out / attn-out **at every swept layer** it reports **TE**
+(activation patch, downstream recomputes) and **DE** (path patch, downstream frozen to
+corrupt), averaged over `(a, a', b)` triples, for **two sender variants**: **full-node** (swap
+the whole component output) and **helix-direction** (swap only the helix subspace, writing the
+*fitted* `helix(a+b)` — the analytic target, orthogonal complement kept). full-node DE
+localizes the write band; helix-direction DE tracking it ⇒ the write effect lives in the helix
+direction (N2P "replace along a direction"), now resolved **per layer** rather than at a single
+prior-chosen build layer (no `build_layers` prior — 2026-06-27, Option 2).
+
+It also reports an **exploratory decomposed metric** for the TE: `Δlogit[a+b]` (raised the
+clean answer) and `−Δlogit[a'+b]` (suppressed the corrupt answer), both baselined against the
+unpatched-corrupt run; they sum to `LD_patched − LD_corrupt`, splitting the standard logit-diff
+into its "raise clean" vs "suppress corrupt" halves. (b) vs (a) note: we write the *fitted*
+helix (analytic), not the empirical projection of the real activation, so the test is of the
+specific helix, not merely its learned subspace. This is the probe
+`approach-decision-circuit-identification.md` asks for before adopting TE/DE as a validation
+layer; it does **not** use Edge Pruning (that is `run_discovery_sanity.py`).
 
 ```bash
-python experiments/week1_number_representation/run_te_de_probe.py --model gptj                 # all layers (expensive)
-python experiments/week1_number_representation/run_te_de_probe.py --model gptj --layers 12 27   # focus the build/read band
+python experiments/week1_number_representation/run_te_de_probe.py --model gptj                 # all layers, all framings (expensive)
+python experiments/week1_number_representation/run_te_de_probe.py --model gptj --layers 8 27    # focus the build/read band
+python experiments/week1_number_representation/run_te_de_probe.py --model gptj --framing symbolic  # one framing only
 ```
-Output: `run_te_de_probe/addition/te_de_probe.json` + `te_de_by_layer.png`. Cost note: DE
-freezes every component, so it is ~`2*n_layers*n_test` patched forwards — restrict
+Output: `run_te_de_probe/<operation>/te_de.<framing>.json` (one per framing) + two PNGs
+**`te_de_summary_MLP.png`** / **`te_de_summary_Attn.png`**, each with one panel per framing and
+8 curves (full/helix × TE/DE in LD, plus full/helix × TE in `Δ[a+b]` and `−Δ[a'+b]`). Cost
+note: full+helix × TE+DE × {MLP,attn} ≈ 8 patched forwards per layer per triple, over all
+layers and framings — restrict
 `--layers` and keep `--n_test` modest.
 
 ## What each result feeds downstream
@@ -193,8 +211,11 @@ freezes every component, so it is ~`2*n_layers*n_test` patched forwards — rest
   two answers share a first token are skipped (logit-diff ~0 by construction). NB GPT-J needs
   **few-shot** to do the task reliably (zero-shot it often echoes the prompt); the answer/sum
   sites and causal runs assume the model actually computes — operand (read=a) runs do not.
-- For Llama-3-8B, `build_layers` in `config.py` is a placeholder — set it from the
-  `run_helix_fit` sweep before running causal validation with the default layer.
+- For Llama-3-8B, `build_layers` in `config.py` is an unverified placeholder. As of
+  2026-06-27 **no script's default depends on it** — `run_causal_validation` and
+  `run_te_de_probe` both sweep all layers, and `run_helix_fit` only *records* it as
+  `expected_build_layers` metadata. Still worth setting from the `run_helix_fit` sweep so that
+  annotation is meaningful, but it no longer silently drives any intervention band.
 - In word/wordproblem framings the operand `a` may not be at the first content position;
   read-token indexing locates operands as the 1st/2nd **digit-bearing** tokens, and literal
   constants (the `3` in `mult_const`, `7` in `modular`) are placed *after* the operands (and

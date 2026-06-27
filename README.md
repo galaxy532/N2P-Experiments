@@ -98,8 +98,8 @@ N2P-Experiments/
 │   │   ├── run_fourier.py                # DFT of resid_post / embeddings (activation space)
 │   │   ├── run_fourier_components.py     # DFT of MLP/attn output LOGITS [zhou2024 Fig 2-3]
 │   │   ├── run_fourier_components_raw.py # DFT of MLP/attn output ACTIVATIONS (SAE-relevant)
-│   │   ├── run_causal_validation.py      # helix full/magnitude/modular + PCA baseline vs full-layer, swept per layer & operation
-│   │   └── run_te_de_probe.py            # TE/DE write-site localization [kantamneni2025 Fig 6]
+│   │   ├── run_causal_validation.py      # helix full/magnitude/modular + PCA baseline vs full-layer, swept over ALL layers & ALL framings
+│   │   └── run_te_de_probe.py            # per-layer TE/DE write-site localization [kantamneni2025 Fig 6]; full-node vs helix-direction + decomposed logit-diff
 │   └── week1_circuit_sanity/
 │       ├── README.md
 │       └── run_greaterthan.py
@@ -178,7 +178,8 @@ python3 experiments/week1_number_representation/run_fourier_components_raw.py --
 # {amplitude,power,log} default amplitude=sqrt(power)=||C_k||; --cmap, --vmax-percentile).
 python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --summary --operation addition --read-token sum  # -> summary_MLP + summary_Attn
 python3 experiments/week1_number_representation/run_fourier.py --model gptj --summary --operation addition --read-token a               # -> summary_resid_post (panel per framing)
-python3 experiments/week1_number_representation/run_causal_validation.py --model gptj  # helix full/magnitude/modular + PCA-9/27 baseline vs full-layer ceiling; swept over --layers (Fig-5/6 curve), any --operation/--framing, first-token answers
+python3 experiments/week1_number_representation/run_causal_validation.py --model gptj  # helix full/magnitude/modular + PCA-9/27 baseline vs full-layer ceiling; swept over ALL layers (Fig-5/6 curve) and ALL framings (panel-row each); --framing/--layers to restrict; first-token answers
+python3 experiments/week1_number_representation/run_te_de_probe.py --model gptj        # per-layer TE/DE (Fig 6); full-node vs helix-direction(analytic) + Δlogit decomposition; MLP & Attn summaries, panel per framing
 python3 experiments/week1_circuit_sanity/run_discovery_sanity.py --target tracr  # needs Edge-Pruning repo
 ```
 
