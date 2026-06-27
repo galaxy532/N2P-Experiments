@@ -1,9 +1,9 @@
 {
   "date": "2026-06-27",
-  "git_sha": "12772b9",
+  "git_sha": "b31694b",
   "seed": 0,
   "command": "experiments/week1_number_representation/run_fourier_components.py --model llama3-8b --summary --operation addition --read-token sum --kshot 4",
-  "written_at": "2026-06-27T15:51:54",
+  "written_at": "2026-06-27T16:38:44",
   "model": "llama3-8b",
   "script": "run_fourier_components.py",
   "operation": "addition",
