@@ -16,7 +16,7 @@ Fig-3 layer x frequency heatmap with ONE PANEL PER FRAMING, written as TWO files
 
     export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
     python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --layer 16 --operation addition --framing symbolic
-    python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --summary --operation addition --read-token sum
+    python3 experiments/week1_number_representation/run_fourier_components.py --model gptj --summary --operation addition --read-token sum --kshot 4
 
 NOTE on the DFT: W_U projection uses the raw unembedding (no ln_final fold); pass
 --apply-ln to fold it in. NOTE on --hi 360: 0..360 is 361 points (prime) -> periods read

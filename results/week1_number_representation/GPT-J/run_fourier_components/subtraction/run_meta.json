@@ -1,0 +1,14 @@
+{
+  "date": "2026-06-27",
+  "git_sha": "12772b9",
+  "seed": 0,
+  "command": "experiments/week1_number_representation/run_fourier_components.py --model gptj --summary --operation subtraction --read-token sum --kshot 4",
+  "written_at": "2026-06-27T15:33:32",
+  "model": "gptj",
+  "script": "run_fourier_components.py",
+  "operation": "subtraction",
+  "read_token": "sum",
+  "layer": null,
+  "summary": true,
+  "framing": null
+}
