@@ -12,7 +12,8 @@ This is go/no-go gate #1.
 | `run_fourier.py` | Fourier features in **activation space** [zhou2024 §4.1] | sparse power spectrum; a magnitude (low-freq) peak + modular peaks at periods {2,2.5,5,10}; present already in **embeddings**. NB: top-10-by-power is dominated by the low-freq magnitude tail — read the *plot peaks*, not the ranking (see `fourier-experiments-week1-results.md`) |
 | `run_fourier_components.py` | per-component **logit** spectra [zhou2024 §3, Figs 2–3] | MLP-output logits dominated by **low-freq** (magnitude/approximation), attention-output logits by **high-freq** periods {2,5,10} (modular/classification) |
 | `run_fourier_components_raw.py` | per-component **activation** spectra (SAE-relevant) | MLP-output / attn-output activations sparse in frequency over the **input** number; the object week-2 SAEs ingest |
-| `run_causal_validation.py` | causal sufficiency [engels2024 §5 / kantamneni2025 Fig 5] | helix-full ÷ full-layer logit-diff ratio near 1.0 **over a layer band**, and helix-full ≥ the PCA-9/27 baseline (the helix *form*, not generic capacity, is causal). Swept across **all layers** by default (no `build_layers` prior) and **all three framings** (one panel-row each). |
+| `run_causal_validation.py` | causal sufficiency [kantamneni2025 §4.4/Fig 5], **denoising** | helix-full ÷ full-layer restoration ratio near 1.0 **over a layer band**, and helix-full ≥ the PCA-9/27 baseline (the helix *form*, not generic capacity, is causal). Denoising (inject clean helix into corrupt run); all layers + all framings by default. |
+| `run_causal_validation_components.py` | same, at MLP-out / attn-out | per-component denoising restoration ÷ whole-component ceiling; which component's helix write is sufficient. `--read-token {a,sum}`. Two plots (MLP, Attn). |
 
 **The two `*_components*` scripts answer different questions.** `run_fourier_components.py`
 (logit lens, read at the **sum** token via `--read-token sum`) asks *which residue class a
@@ -85,9 +86,10 @@ python experiments/week1_number_representation/run_fourier_components.py     --m
 python experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --layer 16 --operation addition --framing symbolic --read-token a   # MLP/attn ACTIVATIONS
 python experiments/week1_number_representation/run_fourier_components_raw.py --model gptj --summary --operation addition --read-token a               # Fig 3 heatmaps (activation space)
 python experiments/week1_number_representation/run_fourier.py               --model gptj --summary --operation addition --read-token a               # resid_post heatmap (panel per framing)
-python experiments/week1_number_representation/run_causal_validation.py --model gptj                                                 # addition/symbolic; default layer band swept
+python experiments/week1_number_representation/run_causal_validation.py --model gptj --kshot 4                                        # resid_post; denoising; all layers + framings
 python experiments/week1_number_representation/run_causal_validation.py --model gptj --operation modular --framing symbolic          # any operation/framing (answer from task.fn)
 python experiments/week1_number_representation/run_causal_validation.py --model gptj --operation multiplication --layers 10 14 18 22  # restrict the layer-of-intervention sweep
+python experiments/week1_number_representation/run_causal_validation_components.py --model gptj --kshot 4                             # MLP-out + attn-out; --read-token {a,sum}; two plots
 # then repeat with --model llama3-8b (confirm build_layers in config.py from the helix sweep)
 ```
 
@@ -110,7 +112,9 @@ results/week1_number_representation/<model>/
 ├── run_fourier_components_raw/<operation>/ L<n>.<framing>.<rt>.png|json  (raw activations)
 │                                     summary_MLP.<rt>.png + summary_Attn.<rt>.png   (--summary; panel per framing)
 ├── run_causal_validation/<operation>/ causal_validation.<framing>.json (per framing),
-│                                     causal_by_layer.summary.png  (all-layer sweep, panel-row per framing; Fig-5/6 curve)
+│                                     causal_by_layer.summary.png  (denoising, all-layer sweep, panel-row per framing)
+├── run_causal_validation_components/<operation>/ causal_components.<framing>.json (per framing; mlp+attn),
+│                                     causal_components_MLP.summary.png + causal_components_Attn.summary.png
 └── run_te_de_probe/<operation>/      te_de.<framing>.json (per framing),
                                       te_de_summary_MLP.png + te_de_summary_Attn.png  (per-layer TE/DE, panel per framing, 8 curves)
 ```
@@ -130,18 +134,39 @@ split). `--layers LO HI` restricts the band; colour defaults to `--power-transfo
 `--vmax-percentile 99.5`, `--cmap inferno_r`. Outlier components expected at periods ~2, 2.5, 5, 10.
 
 ## Causal validation outputs (`run_causal_validation.py`)
-Sweeps the patch across **layers of intervention** (`--layers`, default = **ALL layers
-`0..last`**; no `build_layers` prior is assumed — 2026-06-27) and across **all three framings
-by default** (`--framing` restricts to one). For each layer it reports, per method, the mean
-operand-`a→a'` logit-diff and its ratio to the full-layer patch (the ceiling); `noop` is the
-floor. Output is a single combined plot **`causal_by_layer.summary.png`** — one panel-row per
-framing × 2 columns (absolute logit-diff + ratio-over-full-layer vs **layer of intervention**,
-the [kantamneni2025] Fig-5 / [engels2024] Fig-6 shape) — plus one `causal_validation.<framing>.json`
-per framing. (A single-framing run instead writes `causal_by_layer.<framing>.png`.)
+**Direction: DENOISING** ([kantamneni2025] §4.4 / Fig-5; switched 2026-06-27 from the
+[engels2024] Eq 5-6 noising+average-ablate-rest the old version used — see the approach-decision
+note. Results from the old noising version are **stale; re-run**.) The base run is the
+**corrupt** prompt `a'+b`; we **inject the clean operand `helix(a)`** into the subspace at the
+operand-`a` token, let the network recompute, and read how much the clean answer is restored.
+No average-ablation is needed (injecting clean into a corrupt run leaves nothing clean in the
+orthogonal complement to leak).
 
-- `helix_full` — the whole helix (linear + all periods + DC). Tracking the full-layer ceiling over a layer band ⇒ the helix subspace is causally sufficient there.
-- `helix_magnitude` / `helix_modular` — the **separable** split: magnitude = linear + DC + `T=100` (low-freq); modular = `T=2,5,10` (high-freq). Shows which part carries the effect (the stub replaces the magnitude part exactly, [zhou2024 Table 1]).
-- `pca9` / `pca27` — **PCA-reconstruction baseline** ([kantamneni2025] Fig 5): patches the real `a'` activation's top-k PCA reconstruction, no helix assumed. `9` is capacity-matched to the helix, `27` is over-capacity. `helix_full` matching/beating these (with far fewer *effective* dims — the helix populates only ~7–8 dims over integers, since `sin(2πa/2)≡0`) is the evidence that the periodic **form**, not raw subspace capacity, is causal.
+Sweeps **layers of intervention** (`--layers`, default = **ALL layers `0..last`**, no
+`build_layers` prior) across **all three framings by default** (`--framing` restricts to one).
+Per layer, per method: mean restoration logit-diff `logit[ans(a)] − logit[ans(a')]` and its
+ratio to the whole-layer injection (the ceiling); `noop` (unpatched corrupt) is the floor.
+Output is **`causal_by_layer.summary.png`** — one panel-row per framing × 2 cols (absolute |
+ratio-over-full-layer vs layer) — plus one `causal_validation.<framing>.json` per framing.
+(Single-framing run → `causal_by_layer.<framing>.png`.)
+
+- `full_layer` — inject the **whole** clean `resid_post[L]` (per-layer sufficiency ceiling).
+- `helix_full` — inject the whole fitted clean helix (linear + all periods + DC). Tracking `full_layer` over a band ⇒ the helix subspace is causally sufficient there.
+- `helix_magnitude` / `helix_modular` — the **separable** split: magnitude = linear + DC + `T=100` (low-freq); modular = `T=2,5,10` (high-freq). Which part carries the effect (the stub replaces magnitude exactly, [zhou2024 Table 1]).
+- `pca9` / `pca27` — **PCA-injection baseline** ([kantamneni2025] Fig 5): inject the clean activation's top-k PCA projection, no helix assumed. `9` capacity-matched, `27` over-capacity. `helix_full` matching/beating these with far fewer *effective* dims (the helix populates only ~7–8 dims over integers, since `sin(2πa/2)≡0`) is the evidence that the periodic **form**, not raw subspace capacity, is causal.
+
+## Causal validation at the component outputs (`run_causal_validation_components.py`)
+The component-level analogue (MLP-out + attn-out, the causal twin of `run_fourier_components_raw`).
+Same **denoising** method and full-parity methods as above, but injected at `hook_mlp_out` /
+`hook_attn_out` instead of `resid_post`, asking per layer whether the helix *as written by that
+one component* is causally sufficient. `--read-token {a,sum}` (default `a`): `a` = operand token
+`helix(a)`, `sum` = answer token `helix(a+b)`. **Caveat:** at a single component the operand `a'`
+still lives in every other component / the embedding / the non-helix dims, so this is a *partial*
+(total-effect) restoration read **relative to the whole-component ceiling** — not absolute
+operand sufficiency (that is the resid script). Per-component helix-fit R² is expected to be
+lower than on `resid_post`. Output: **two PNGs** `causal_components_MLP.summary.png` /
+`causal_components_Attn.summary.png` (panel per framing × abs|ratio) + `causal_components.<framing>.json`
+per framing (both sites). The shared sweep for both scripts lives in `src/n2p/number_repr/causal_sufficiency.py`.
 
 **Operation/framing semantics.** The operand-`a` representation (and the fitted helix
 basis) is *identical* across operations sharing a pre-`{a}` prefix (causal masking), but the
