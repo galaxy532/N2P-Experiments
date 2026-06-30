@@ -29,8 +29,8 @@ frac_single_token_answers flags exactness). The shared sweep lives in
 n2p.number_repr.causal_sufficiency (also used by run_causal_validation_components.py).
 
     export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-    python experiments/week1_number_representation/run_causal_validation.py --model gptj --kshot 4
-    python experiments/week1_number_representation/run_causal_validation.py --model gptj \
+    python3 experiments/week1_number_representation/run_causal_validation.py --model gptj --kshot 4 --operation addition
+    python3 experiments/week1_number_representation/run_causal_validation.py --model gptj \
         --operation multiplication --framing symbolic --layers 10 12 14 16 18 20
 
 NOTE: trickiest week-1 script; operand-token indexing / first-token answers will likely need a

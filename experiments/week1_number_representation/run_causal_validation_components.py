@@ -28,8 +28,8 @@ the TE curves run_te_de_probe already draws; the new content here is the operand
 test and the magnitude/modular + PCA controls.
 
     export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-    python experiments/week1_number_representation/run_causal_validation_components.py --model gptj --kshot 4
-    python experiments/week1_number_representation/run_causal_validation_components.py --model gptj --read-token sum --layers 10 14 18 22
+    python3 experiments/week1_number_representation/run_causal_validation_components.py --model gptj --kshot 4 --operation addition
+    python3 experiments/week1_number_representation/run_causal_validation_components.py --model gptj --read-token sum --layers 10 14 18 22
 """
 import argparse
 import json
