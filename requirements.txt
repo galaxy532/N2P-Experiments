@@ -1,5 +1,9 @@
 # Core
-torch --index-url https://download.pytorch.org/whl/cu121
+# torch is installed SEPARATELY by setup/setup_paperspace.sh, pinned to a CUDA build that
+# matches the machine's GPU driver. Do NOT add `torch --index-url ...` here: in a requirements
+# file --index-url is GLOBAL (it hijacks the index for every package), and an unpinned `torch`
+# lets a plain `pip install -r` keep a base-image torch that's too new for the driver
+# (e.g. 2.x+cu130 vs driver CUDA 12.4) -> torch.cuda.is_available()==False -> silent CPU run.
 transformer_lens>=2.0      # HookedTransformer; supports gpt-j-6b and meta-llama Llama-3
 transformers>=4.41
 accelerate>=0.30
