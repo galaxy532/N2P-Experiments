@@ -1,9 +1,9 @@
 {
   "date": "2026-07-14",
-  "git_sha": "2ed4eed",
+  "git_sha": "6068a7d",
   "seed": 0,
   "command": "experiments/week1_number_representation/run_causal_validation.py --model gptj --kshot 4 --operation addition",
-  "written_at": "2026-07-14T19:22:08",
+  "written_at": "2026-07-14T20:18:34",
   "model": "gptj",
   "script": "run_causal_validation.py",
   "operation": "addition",
