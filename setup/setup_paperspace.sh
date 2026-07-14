@@ -24,32 +24,34 @@ echo "[setup] HF_HOME=${HF_HOME}"
 
 # --- Dependencies ---
 python3 -m pip install --upgrade pip
-
-# Torch FIRST, pinned to a CUDA build that matches THIS machine's GPU driver. Paperspace base
-# images sometimes ship a torch too new for the A6000 driver (seen: 2.x+cu130 vs driver CUDA
-# 12.4), which makes torch.cuda.is_available()==False -> silent CPU fallback (GPT-J runs never
-# finish). We uninstall the base-image torch and install a matched build. Override TORCH_SPEC /
-# TORCH_INDEX if your driver differs — `nvidia-smi` (top-right) shows the max CUDA it supports
-# (cu121 works for driver CUDA >= 12.1; use cu124 to match 12.4 exactly).
-TORCH_SPEC="${TORCH_SPEC:-torch==2.4.1}"
-TORCH_INDEX="${TORCH_INDEX:-https://download.pytorch.org/whl/cu121}"
-echo "[setup] installing ${TORCH_SPEC} from ${TORCH_INDEX}"
-python3 -m pip uninstall -y torch || true
-python3 -m pip install "${TORCH_SPEC}" --index-url "${TORCH_INDEX}" \
-    --extra-index-url https://pypi.org/simple
-
 python3 -m pip install -r requirements.txt
 python3 -m pip install hf_transfer || true
+
+# Torch is (re)installed LAST, from a driver-matched CUDA index. Order and flags matter:
+#   * LAST, because installing it before `pip install -r requirements.txt` lets transformer_lens's
+#     dependency resolution UPGRADE it back to the base image's too-new build (seen: 2.13+cu130,
+#     which the A6000's CUDA-12.4 driver cannot load -> silent CPU fallback).
+#   * NO `--extra-index-url pypi`: with a pypi extra index pip picks the HIGHEST version, which is
+#     the cu130 wheel again. We pull ONLY from the pinned cu index.
+#   * `--no-deps`: torch's python deps are already present from requirements; the pytorch.org
+#     +cuXXX wheel bundles the CUDA runtime, so no dep resolution is needed.
+# `nvidia-smi` (top-right) shows the driver's max CUDA: cu124 matches 12.4 exactly; cu121 also
+# works for driver CUDA >= 12.1. Override TORCH_INDEX/TORCH_SPEC if your driver differs.
+TORCH_SPEC="${TORCH_SPEC:-torch}"
+TORCH_INDEX="${TORCH_INDEX:-https://download.pytorch.org/whl/cu124}"
+echo "[setup] (re)installing ${TORCH_SPEC} from ${TORCH_INDEX} (driver-matched, no pypi fallback)"
+python3 -m pip uninstall -y torch || true
+python3 -m pip install --no-deps "${TORCH_SPEC}" --index-url "${TORCH_INDEX}"
 
 # --- Fail LOUDLY now if CUDA is not actually usable, instead of 40 min into a GPU run. ---
 python3 - <<'PY'
 import sys
 import torch
 if not torch.cuda.is_available():
-    sys.exit("[setup][FATAL] torch %s (cuda build %s) cannot see the GPU. It is probably "
-             "built for a newer CUDA than this driver supports (see nvidia-smi). Reinstall a "
-             "matching build and re-run, e.g.:\n"
-             "  TORCH_INDEX=https://download.pytorch.org/whl/cu124 bash setup/setup_paperspace.sh"
+    sys.exit("[setup][FATAL] torch %s (cuda build %s) cannot see the GPU. Its CUDA build is too "
+             "new for this driver (nvidia-smi top-right shows the max supported). Try an older "
+             "CUDA index and re-run, e.g.:\n"
+             "  TORCH_INDEX=https://download.pytorch.org/whl/cu121 bash setup/setup_paperspace.sh"
              % (torch.__version__, torch.version.cuda))
 print("[setup] torch %s CUDA OK -> %s" % (torch.__version__, torch.cuda.get_device_name(0)))
 PY
